@@ -1,7 +1,20 @@
 import express from 'express';
 import cors from 'cors';
-import { fetchCurrentPrice, fetchHistoricalData, getPriceHistory } from './goldPriceService.js';
+import { fetchCurrentPrice, fetchHistoricalData, getPriceHistory, fetchFromConfiguredApi } from './goldPriceService.js';
 import { saveSignal, getSignals, getSignalStats, getLatestSignal, getSignalsByDateRange } from './signalService.js';
+import {
+  getAllApiProviders,
+  getApiProvider,
+  addApiProvider,
+  updateApiProvider,
+  deleteApiProvider,
+  getActiveApiProvider,
+  getRefreshSettings,
+  setRefreshSettings,
+  getAllSettings,
+  setSetting,
+  getSetting
+} from './settingsService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,7 +36,18 @@ app.get('/health', (req, res) => {
  */
 app.get('/api/price/current', async (req, res) => {
   try {
-    const price = await fetchCurrentPrice();
+    // Try configured API first, fall back to Yahoo Finance
+    const activeProvider = getActiveApiProvider();
+    let price;
+    
+    if (activeProvider) {
+      price = await fetchFromConfiguredApi(activeProvider);
+    }
+    
+    if (!price) {
+      price = await fetchCurrentPrice();
+    }
+    
     if (!price) {
       return res.status(503).json({ error: 'Unable to fetch price data' });
     }
@@ -193,6 +217,206 @@ app.get('/api/signals/range', (req, res) => {
   }
 });
 
+// ==================== SETTINGS ENDPOINTS ====================
+
+/**
+ * GET /api/settings
+ * Get all settings
+ */
+app.get('/api/settings', (req, res) => {
+  try {
+    const settings = getAllSettings();
+    const providers = getAllApiProviders();
+    const refresh = getRefreshSettings();
+    
+    res.json({
+      ...settings,
+      apiProviders: providers,
+      refresh,
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+/**
+ * GET /api/settings/providers
+ * Get all API providers
+ */
+app.get('/api/settings/providers', (req, res) => {
+  try {
+    const providers = getAllApiProviders();
+    res.json({ data: providers });
+  } catch (error) {
+    console.error('Error fetching providers:', error);
+    res.status(500).json({ error: 'Failed to fetch API providers' });
+  }
+});
+
+/**
+ * GET /api/settings/providers/active
+ * Get the active API provider
+ */
+app.get('/api/settings/providers/active', (req, res) => {
+  try {
+    const provider = getActiveApiProvider();
+    if (!provider) {
+      return res.json({ data: null, message: 'No active provider configured' });
+    }
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error fetching active provider:', error);
+    res.status(500).json({ error: 'Failed to fetch active provider' });
+  }
+});
+
+/**
+ * POST /api/settings/providers
+ * Add a new API provider
+ */
+app.post('/api/settings/providers', (req, res) => {
+  try {
+    const { name, endpoint, apiKey, requestType, isActive, headers, symbolFormat, currencyFormat } = req.body;
+    
+    if (!name || !endpoint || !apiKey) {
+      return res.status(400).json({ error: 'Missing required fields: name, endpoint, apiKey' });
+    }
+
+    const provider = addApiProvider({
+      name,
+      endpoint,
+      apiKey,
+      requestType: requestType || 'GET',
+      isActive: isActive || false,
+      headers,
+      symbolFormat,
+      currencyFormat,
+    });
+
+    res.status(201).json({ data: provider });
+  } catch (error) {
+    console.error('Error adding provider:', error);
+    res.status(500).json({ error: 'Failed to add API provider' });
+  }
+});
+
+/**
+ * PUT /api/settings/providers/:id
+ * Update an API provider
+ */
+app.put('/api/settings/providers/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const provider = updateApiProvider(id, updates);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error updating provider:', error);
+    if (error.message === 'API provider not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to update API provider' });
+  }
+});
+
+/**
+ * DELETE /api/settings/providers/:id
+ * Delete an API provider
+ */
+app.delete('/api/settings/providers/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = deleteApiProvider(id);
+    
+    if (!deleted) {
+      return res.status(404).json({ error: 'API provider not found' });
+    }
+    
+    res.json({ success: true, message: 'API provider deleted' });
+  } catch (error) {
+    console.error('Error deleting provider:', error);
+    res.status(500).json({ error: 'Failed to delete API provider' });
+  }
+});
+
+/**
+ * GET /api/settings/refresh
+ * Get refresh settings
+ */
+app.get('/api/settings/refresh', (req, res) => {
+  try {
+    const refresh = getRefreshSettings();
+    res.json({ data: refresh });
+  } catch (error) {
+    console.error('Error fetching refresh settings:', error);
+    res.status(500).json({ error: 'Failed to fetch refresh settings' });
+  }
+});
+
+/**
+ * PUT /api/settings/refresh
+ * Update refresh settings
+ */
+app.put('/api/settings/refresh', (req, res) => {
+  try {
+    const { interval, intervalMs } = req.body;
+    
+    const validIntervals = ['realtime', 'hourly', 'daily', 'weekly'];
+    if (interval && !validIntervals.includes(interval)) {
+      return res.status(400).json({ error: 'Invalid interval. Valid: ' + validIntervals.join(', ') });
+    }
+
+    const refresh = setRefreshSettings({
+      interval: interval || 'weekly',
+      intervalMs: intervalMs || 7 * 24 * 60 * 60 * 1000,
+      lastRefresh: Date.now(),
+    });
+
+    res.json({ data: refresh });
+  } catch (error) {
+    console.error('Error updating refresh settings:', error);
+    res.status(500).json({ error: 'Failed to update refresh settings' });
+  }
+});
+
+/**
+ * POST /api/settings/providers/:id/test
+ * Test an API provider connection
+ */
+app.post('/api/settings/providers/:id/test', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const provider = getApiProvider(id);
+    
+    if (!provider) {
+      return res.status(404).json({ error: 'API provider not found' });
+    }
+
+    const result = await fetchFromConfiguredApi(provider);
+    
+    if (result) {
+      res.json({ 
+        success: true, 
+        message: 'Connection successful',
+        data: result 
+      });
+    } else {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Failed to fetch data from provider'
+      });
+    }
+  } catch (error) {
+    console.error('Error testing provider:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Connection test failed'
+    });
+  }
+});
+
 // ==================== START SERVER ====================
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -203,15 +427,29 @@ Port: ${PORT}
 Time: ${new Date().toISOString()}
 
 Endpoints:
-  GET  /health              - Health check
-  GET  /api/price/current   - Current gold price
-  GET  /api/price/history   - Historical data (Yahoo Finance)
-  GET  /api/price/cached    - Cached history from DB
-  POST /api/signals         - Save a signal
-  GET  /api/signals         - Get signals (paginated)
-  GET  /api/signals/latest  - Get latest signal
-  GET  /api/signals/stats   - Get statistics
-  GET  /api/signals/range   - Get signals by date range
+  GET  /health                      - Health check
+  
+  Price:
+  GET  /api/price/current           - Current gold price
+  GET  /api/price/history           - Historical data
+  GET  /api/price/cached            - Cached history from DB
+  
+  Signals:
+  POST /api/signals                 - Save a signal
+  GET  /api/signals                 - Get signals (paginated)
+  GET  /api/signals/latest          - Get latest signal
+  GET  /api/signals/stats           - Get statistics
+  GET  /api/signals/range           - Get signals by date range
+  
+  Settings:
+  GET  /api/settings                - Get all settings
+  GET  /api/settings/providers      - Get API providers
+  POST /api/settings/providers      - Add API provider
+  PUT  /api/settings/providers/:id  - Update API provider
+  DELETE /api/settings/providers/:id - Delete API provider
+  POST /api/settings/providers/:id/test - Test provider
+  GET  /api/settings/refresh        - Get refresh settings
+  PUT  /api/settings/refresh        - Update refresh settings
 ================================
   `);
 

@@ -2,7 +2,10 @@ import db from './database.js';
 
 /**
  * Gold Price Service
- * Uses free Yahoo Finance API for real-time and historical data
+ * Supports multiple API providers:
+ * - Yahoo Finance (free, default)
+ * - GoldAPI.io (configurable)
+ * - Custom providers via settings
  * 
  * Symbols:
  * - GC=F: Gold Futures (COMEX)
@@ -11,6 +14,93 @@ import db from './database.js';
 
 const YAHOO_FINANCE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const GOLD_SYMBOL = 'GC=F'; // Gold Futures - most liquid
+
+/**
+ * Fetch from a configured API provider (e.g., GoldAPI.io)
+ */
+export async function fetchFromConfiguredApi(provider) {
+  try {
+    const symbol = provider.symbolFormat || 'XAU';
+    const currency = provider.currencyFormat || 'USD';
+    
+    // Build URL - replace placeholders
+    let url = provider.endpoint
+      .replace(':symbol', symbol)
+      .replace(':currency', currency)
+      .replace(':date?', ''); // Remove optional date for current price
+
+    // Remove trailing slash if present
+    url = url.replace(/\/+$/, '');
+
+    console.log(`🔄 Fetching from ${provider.name}: ${url}`);
+
+    const headers = {
+      'User-Agent': 'GoldFibSignals/1.0',
+      ...(provider.headers || {}),
+    };
+
+    // Add API key based on provider
+    if (provider.name.toLowerCase().includes('goldapi')) {
+      headers['x-access-token'] = provider.apiKey;
+    } else {
+      // Generic API key header
+      headers['Authorization'] = `Bearer ${provider.apiKey}`;
+    }
+
+    const response = await fetch(url, {
+      method: provider.requestType || 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`API error from ${provider.name}:`, response.status, errorText);
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log(`✅ Received data from ${provider.name}`);
+
+    // Parse response based on provider
+    let priceData;
+    
+    if (provider.name.toLowerCase().includes('goldapi')) {
+      // GoldAPI.io response format
+      priceData = {
+        price: data.price,
+        bid: data.bid || data.price * 0.9995,
+        ask: data.ask || data.price * 1.0005,
+        high24h: data.high_price || data.price,
+        low24h: data.low_price || data.price,
+        change24h: data.ch || 0,
+        changePercent24h: data.chp || 0,
+        timestamp: data.timestamp ? data.timestamp * 1000 : Date.now(),
+        source: provider.name,
+      };
+    } else {
+      // Generic response - try to parse common formats
+      priceData = {
+        price: data.price || data.rate || data.value || data.last,
+        bid: data.bid || data.price * 0.9995,
+        ask: data.ask || data.price * 1.0005,
+        high24h: data.high || data.high_24h || data.price,
+        low24h: data.low || data.low_24h || data.price,
+        change24h: data.change || data.ch || 0,
+        changePercent24h: data.change_percent || data.chp || 0,
+        timestamp: Date.now(),
+        source: provider.name,
+      };
+    }
+
+    // Save to database
+    saveCurrentPrice(priceData);
+
+    return priceData;
+  } catch (error) {
+    console.error(`Error fetching from ${provider.name}:`, error.message);
+    return null;
+  }
+}
 
 /**
  * Fetch current gold price from Yahoo Finance

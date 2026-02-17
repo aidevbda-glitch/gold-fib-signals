@@ -5,10 +5,11 @@ import { FibonacciLevels } from './components/FibonacciLevels';
 import { SignalsList } from './components/SignalsList';
 import { PriceChart } from './components/PriceChart';
 import { GoldProductsPage } from './pages/GoldProductsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings } from 'lucide-react';
 
-type Page = 'signals' | 'products';
+type Page = 'signals' | 'products' | 'settings';
 
 function App() {
   const { startRealTimeUpdates, error } = useStore();
@@ -22,6 +23,10 @@ function App() {
 
   if (currentPage === 'products') {
     return <GoldProductsPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'settings') {
+    return <SettingsPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -40,14 +45,20 @@ function App() {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage('products')}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
                 <Layers className="w-4 h-4" />
-                <span className="hidden sm:inline">Gold Products & Brokers</span>
-                <span className="sm:hidden">Products</span>
+                <span className="hidden sm:inline">Products</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('settings')}
+                className="p-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                title="Settings"
+              >
+                <Settings className="w-5 h-5" />
               </button>
               <a
                 href="https://github.com/aidevbda-glitch/gold-fib-signals"
