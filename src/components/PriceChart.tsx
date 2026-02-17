@@ -22,25 +22,41 @@ export function PriceChart() {
     );
   }
 
+  // Convert to chart data - using daily prices
   const chartData = priceHistory.map((candle) => ({
     time: candle.timestamp,
     price: candle.close,
     high: candle.high,
     low: candle.low,
+    date: format(candle.timestamp, 'MMM d'), // Daily format
   }));
 
-  // Add current price as latest point
+  // Add current price as today's point if we have it
   if (currentPrice) {
-    chartData.push({
-      time: Date.now(),
-      price: currentPrice.price,
-      high: currentPrice.price,
-      low: currentPrice.price,
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayTimestamp = today.getTime();
+    
+    // Check if we already have today's data
+    const hasTodayData = chartData.some(d => {
+      const dDate = new Date(d.time);
+      dDate.setHours(0, 0, 0, 0);
+      return dDate.getTime() === todayTimestamp;
     });
+
+    if (!hasTodayData) {
+      chartData.push({
+        time: Date.now(),
+        price: currentPrice.price,
+        high: currentPrice.price,
+        low: currentPrice.price,
+        date: format(Date.now(), 'MMM d'),
+      });
+    }
   }
 
-  const minPrice = Math.min(...chartData.map(d => d.low)) * 0.998;
-  const maxPrice = Math.max(...chartData.map(d => d.high)) * 1.002;
+  const minPrice = Math.min(...chartData.map(d => d.low)) * 0.995;
+  const maxPrice = Math.max(...chartData.map(d => d.high)) * 1.005;
 
   const fibLines = fibLevels ? [
     { value: fibLevels.levels.level0, label: '0%', color: '#6366f1' },
@@ -52,9 +68,20 @@ export function PriceChart() {
     { value: fibLevels.levels.level1000, label: '100%', color: '#ef4444' },
   ] : [];
 
+  // Calculate tick interval based on data range
+  const dataRangeDays = chartData.length;
+  const tickInterval = dataRangeDays > 180 ? Math.floor(dataRangeDays / 12) : 
+                       dataRangeDays > 60 ? Math.floor(dataRangeDays / 8) :
+                       dataRangeDays > 30 ? 7 : 1;
+
   return (
     <div className="bg-gray-800 rounded-xl p-6">
-      <h3 className="text-lg font-bold text-white mb-4">Price Chart with Fibonacci Levels</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-white">Daily Price Chart with Fibonacci Levels</h3>
+        <span className="text-xs text-gray-500">
+          {chartData.length} days • Smallest unit: 1 day
+        </span>
+      </div>
       
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
@@ -68,9 +95,13 @@ export function PriceChart() {
 
             <XAxis
               dataKey="time"
-              tickFormatter={(time) => format(time, 'HH:mm')}
+              tickFormatter={(time) => format(time, 'MMM d')}
               stroke="#4b5563"
-              tick={{ fill: '#9ca3af', fontSize: 11 }}
+              tick={{ fill: '#9ca3af', fontSize: 10 }}
+              interval={tickInterval}
+              angle={-45}
+              textAnchor="end"
+              height={50}
             />
             
             <YAxis
@@ -87,8 +118,8 @@ export function PriceChart() {
                 border: '1px solid #374151',
                 borderRadius: '8px',
               }}
-              labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
-              formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
+              labelFormatter={(time) => format(time, 'EEEE, MMMM d, yyyy')}
+              formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Daily Close']}
             />
 
             {/* Fibonacci reference lines */}
@@ -115,7 +146,7 @@ export function PriceChart() {
                 stroke="#22c55e"
                 strokeWidth={2}
                 label={{
-                  value: `Now: $${currentPrice.price.toFixed(2)}`,
+                  value: `Live: $${currentPrice.price.toFixed(2)}`,
                   fill: '#22c55e',
                   fontSize: 11,
                   position: 'left',
@@ -151,6 +182,11 @@ export function PriceChart() {
           </div>
         ))}
       </div>
+
+      {/* Data source note */}
+      <p className="text-xs text-gray-500 text-center mt-3">
+        Historical: FreeGoldAPI (daily) • Live: Swissquote
+      </p>
     </div>
   );
 }

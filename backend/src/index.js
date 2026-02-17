@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { fetchCurrentPrice, fetchHistoricalData, getPriceHistory, fetchFromConfiguredApi } from './goldPriceService.js';
+import { fetchCurrentPrice, fetchHistoricalData, getPriceHistory, fetchFromConfiguredApi, manualRefresh } from './goldPriceService.js';
 import { saveSignal, getSignals, getSignalStats, getLatestSignal, getSignalsByDateRange } from './signalService.js';
 import {
   getAllApiProviders,
@@ -89,6 +89,24 @@ app.get('/api/price/history', async (req, res) => {
   } catch (error) {
     console.error('Error fetching history:', error);
     res.status(500).json({ error: 'Failed to fetch historical data' });
+  }
+});
+
+/**
+ * POST /api/price/refresh
+ * Manual refresh - fetch latest price from Swissquote
+ */
+app.post('/api/price/refresh', async (req, res) => {
+  try {
+    console.log('📡 Manual refresh requested...');
+    const price = await manualRefresh();
+    if (!price) {
+      return res.status(503).json({ error: 'Unable to fetch price data' });
+    }
+    res.json({ success: true, data: price });
+  } catch (error) {
+    console.error('Error during manual refresh:', error);
+    res.status(500).json({ error: 'Failed to refresh price' });
   }
 });
 

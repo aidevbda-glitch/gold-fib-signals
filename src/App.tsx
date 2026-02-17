@@ -6,10 +6,12 @@ import { SignalsList } from './components/SignalsList';
 import { PriceChart } from './components/PriceChart';
 import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { BuySignalsPage } from './pages/BuySignalsPage';
+import { SellSignalsPage } from './pages/SellSignalsPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell';
 
 function App() {
   const { startRealTimeUpdates, error } = useStore();
@@ -27,6 +29,14 @@ function App() {
 
   if (currentPage === 'settings') {
     return <SettingsPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'buy') {
+    return <BuySignalsPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'sell') {
+    return <SellSignalsPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -47,11 +57,27 @@ function App() {
             
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setCurrentPage('buy')}
+                className="flex items-center gap-2 px-3 py-2 bg-green-900/50 hover:bg-green-800/50 text-green-400 rounded-lg transition-colors border border-green-700/50"
+                title="Buy Signals (BID)"
+              >
+                <TrendingUp className="w-4 h-4" />
+                <span className="hidden sm:inline">Buy</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('sell')}
+                className="flex items-center gap-2 px-3 py-2 bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg transition-colors border border-red-700/50"
+                title="Sell Signals (ASK)"
+              >
+                <TrendingDown className="w-4 h-4" />
+                <span className="hidden sm:inline">Sell</span>
+              </button>
+              <button
                 onClick={() => setCurrentPage('products')}
                 className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
                 <Layers className="w-4 h-4" />
-                <span className="hidden sm:inline">Products</span>
+                <span className="hidden md:inline">Products</span>
               </button>
               <button
                 onClick={() => setCurrentPage('settings')}

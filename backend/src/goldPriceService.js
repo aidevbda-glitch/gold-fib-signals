@@ -2,18 +2,209 @@ import db from './database.js';
 
 /**
  * Gold Price Service
- * Supports multiple API providers:
- * - Yahoo Finance (free, default)
- * - GoldAPI.io (configurable)
- * - Custom providers via settings
  * 
- * Symbols:
- * - GC=F: Gold Futures (COMEX)
- * - XAUUSD=X: Gold/USD Forex pair
+ * Data Sources:
+ * 1. Real-time: Swissquote forex feed (free, no auth)
+ * 2. Historical daily: FreeGoldAPI (free, no auth)
+ * 3. Backup: GoldAPI.io (configurable via settings)
+ * 
+ * Note: Smallest time unit is 1 DAY for all price reporting
  */
 
+const SWISSQUOTE_URL = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD';
+const FREEGOLDAPI_URL = 'https://freegoldapi.com/data/latest.json';
 const YAHOO_FINANCE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
-const GOLD_SYMBOL = 'GC=F'; // Gold Futures - most liquid
+const GOLD_SYMBOL = 'GC=F';
+
+/**
+ * Fetch current price from Swissquote (primary source)
+ */
+export async function fetchCurrentPrice() {
+  try {
+    // Try Swissquote first
+    const swissquotePrice = await fetchFromSwissquote();
+    if (swissquotePrice) {
+      saveCurrentPrice(swissquotePrice);
+      return swissquotePrice;
+    }
+  } catch (error) {
+    console.error('Swissquote fetch failed:', error.message);
+  }
+
+  // Fallback to Yahoo Finance
+  try {
+    const yahooPrice = await fetchFromYahooFinance();
+    if (yahooPrice) {
+      saveCurrentPrice(yahooPrice);
+      return yahooPrice;
+    }
+  } catch (error) {
+    console.error('Yahoo Finance fetch failed:', error.message);
+  }
+
+  // Return last cached price
+  return getLastSavedPrice();
+}
+
+/**
+ * Fetch from Swissquote forex data feed (free, no auth required)
+ * Returns bid/ask prices from professional forex feed
+ */
+async function fetchFromSwissquote() {
+  console.log('🔄 Fetching from Swissquote...');
+  
+  const response = await fetch(SWISSQUOTE_URL, {
+    headers: {
+      'User-Agent': 'GoldFibSignals/1.0',
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Swissquote API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data || data.length === 0) {
+    throw new Error('Empty response from Swissquote');
+  }
+
+  // Use the first provider's premium spread profile
+  const quote = data[0];
+  const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium') 
+    || quote.spreadProfilePrices[0];
+
+  console.log('✅ Swissquote price received:', prices.bid, '/', prices.ask);
+
+  // Get 24h high/low from database (we track this ourselves)
+  const stats24h = get24hStats();
+
+  return {
+    price: (prices.bid + prices.ask) / 2, // Mid price
+    bid: prices.bid,
+    ask: prices.ask,
+    high24h: stats24h.high || prices.ask,
+    low24h: stats24h.low || prices.bid,
+    change24h: stats24h.change || 0,
+    changePercent24h: stats24h.changePercent || 0,
+    timestamp: quote.ts || Date.now(),
+    source: 'Swissquote',
+  };
+}
+
+/**
+ * Fetch from Yahoo Finance (backup for current price)
+ */
+async function fetchFromYahooFinance() {
+  console.log('🔄 Fetching from Yahoo Finance...');
+  
+  const url = `${YAHOO_FINANCE_URL}/${GOLD_SYMBOL}?interval=1d&range=5d`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Yahoo Finance API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const result = data.chart.result[0];
+  const meta = result.meta;
+  const quote = result.indicators.quote[0];
+  const lastIndex = result.timestamp.length - 1;
+
+  const currentPrice = meta.regularMarketPrice || quote.close[lastIndex];
+  const previousClose = meta.previousClose || quote.close[lastIndex - 1];
+
+  return {
+    price: currentPrice,
+    bid: currentPrice * 0.9995,
+    ask: currentPrice * 1.0005,
+    high24h: Math.max(...quote.high.filter(h => h != null).slice(-2)),
+    low24h: Math.min(...quote.low.filter(l => l != null).slice(-2)),
+    change24h: currentPrice - previousClose,
+    changePercent24h: ((currentPrice - previousClose) / previousClose) * 100,
+    timestamp: Date.now(),
+    source: 'Yahoo Finance',
+  };
+}
+
+/**
+ * Fetch historical DAILY data from FreeGoldAPI
+ * Returns daily closing prices (not intraday)
+ */
+export async function fetchHistoricalData(range = '1y', _interval = '1d') {
+  console.log(`🔄 Fetching historical data (${range}) from FreeGoldAPI...`);
+  
+  try {
+    const response = await fetch(FREEGOLDAPI_URL, {
+      headers: {
+        'User-Agent': 'GoldFibSignals/1.0',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`FreeGoldAPI error: ${response.status}`);
+    }
+
+    const allData = await response.json();
+    
+    // Filter to USD prices from yahoo_finance source (most recent & accurate)
+    const usdData = allData.filter(d => 
+      d.source && d.source.includes('yahoo_finance') && d.price > 100
+    );
+
+    // Calculate date range
+    const now = new Date();
+    const rangeMs = {
+      '1d': 1,
+      '5d': 5,
+      '1mo': 30,
+      '3mo': 90,
+      '6mo': 180,
+      '1y': 365,
+      '2y': 730,
+      '3y': 1095,
+      '5y': 1825,
+      'max': 36500,
+    };
+
+    const daysBack = rangeMs[range] || 365;
+    const cutoffDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+
+    // Filter and convert to candle format
+    const candles = usdData
+      .filter(d => new Date(d.date) >= cutoffDate)
+      .map(d => {
+        const timestamp = new Date(d.date).getTime();
+        const price = d.price;
+        return {
+          timestamp,
+          open: price,
+          high: price * 1.002, // Approximate since we only have close
+          low: price * 0.998,
+          close: price,
+          volume: 0,
+        };
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    console.log(`✅ Loaded ${candles.length} daily candles from FreeGoldAPI`);
+
+    // Save to database
+    savePriceHistory(candles);
+
+    return candles;
+  } catch (error) {
+    console.error('FreeGoldAPI fetch failed:', error.message);
+    // Fallback to cached data
+    return getCachedHistory(range);
+  }
+}
 
 /**
  * Fetch from a configured API provider (e.g., GoldAPI.io)
@@ -23,13 +214,11 @@ export async function fetchFromConfiguredApi(provider) {
     const symbol = provider.symbolFormat || 'XAU';
     const currency = provider.currencyFormat || 'USD';
     
-    // Build URL - replace placeholders
     let url = provider.endpoint
       .replace(':symbol', symbol)
       .replace(':currency', currency)
-      .replace(':date?', ''); // Remove optional date for current price
+      .replace(':date?', '');
 
-    // Remove trailing slash if present
     url = url.replace(/\/+$/, '');
 
     console.log(`🔄 Fetching from ${provider.name}: ${url}`);
@@ -39,11 +228,9 @@ export async function fetchFromConfiguredApi(provider) {
       ...(provider.headers || {}),
     };
 
-    // Add API key based on provider
     if (provider.name.toLowerCase().includes('goldapi')) {
       headers['x-access-token'] = provider.apiKey;
     } else {
-      // Generic API key header
       headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
 
@@ -61,11 +248,9 @@ export async function fetchFromConfiguredApi(provider) {
     const data = await response.json();
     console.log(`✅ Received data from ${provider.name}`);
 
-    // Parse response based on provider
     let priceData;
     
     if (provider.name.toLowerCase().includes('goldapi')) {
-      // GoldAPI.io response format
       priceData = {
         price: data.price,
         bid: data.bid || data.price * 0.9995,
@@ -78,7 +263,6 @@ export async function fetchFromConfiguredApi(provider) {
         source: provider.name,
       };
     } else {
-      // Generic response - try to parse common formats
       priceData = {
         price: data.price || data.rate || data.value || data.last,
         bid: data.bid || data.price * 0.9995,
@@ -92,9 +276,7 @@ export async function fetchFromConfiguredApi(provider) {
       };
     }
 
-    // Save to database
     saveCurrentPrice(priceData);
-
     return priceData;
   } catch (error) {
     console.error(`Error fetching from ${provider.name}:`, error.message);
@@ -103,105 +285,46 @@ export async function fetchFromConfiguredApi(provider) {
 }
 
 /**
- * Fetch current gold price from Yahoo Finance
+ * Manual refresh from Swissquote (for manual refresh button)
  */
-export async function fetchCurrentPrice() {
-  try {
-    const url = `${YAHOO_FINANCE_URL}/${GOLD_SYMBOL}?interval=1m&range=1d`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const result = data.chart.result[0];
-    const meta = result.meta;
-    const quote = result.indicators.quote[0];
-    const timestamps = result.timestamp;
-
-    // Get latest price
-    const lastIndex = timestamps.length - 1;
-    const currentPrice = meta.regularMarketPrice || quote.close[lastIndex];
-    
-    // Calculate 24h high/low from the data
-    const closes = quote.close.filter(c => c != null);
-    const highs = quote.high.filter(h => h != null);
-    const lows = quote.low.filter(l => l != null);
-
-    const priceData = {
-      price: currentPrice,
-      bid: currentPrice * 0.9995, // Approximate spread
-      ask: currentPrice * 1.0005,
-      high24h: Math.max(...highs),
-      low24h: Math.min(...lows),
-      change24h: meta.regularMarketPrice - meta.previousClose,
-      changePercent24h: ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100,
-      timestamp: Date.now(),
-      source: 'Yahoo Finance (GC=F)'
-    };
-
-    // Save snapshot to database
-    saveCurrentPrice(priceData);
-
-    return priceData;
-  } catch (error) {
-    console.error('Error fetching current price:', error);
-    // Return last saved price if API fails
-    return getLastSavedPrice();
-  }
+export async function manualRefresh() {
+  console.log('🔄 Manual refresh triggered...');
+  return fetchCurrentPrice();
 }
 
 /**
- * Fetch historical data from Yahoo Finance
- * @param {string} range - Time range: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max
- * @param {string} interval - Candle interval: 1m, 5m, 15m, 1h, 1d, 1wk, 1mo
+ * Get 24h stats from saved prices
  */
-export async function fetchHistoricalData(range = '1y', interval = '1d') {
-  try {
-    const url = `${YAHOO_FINANCE_URL}/${GOLD_SYMBOL}?interval=${interval}&range=${range}`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
+function get24hStats() {
+  const since = Date.now() - 24 * 60 * 60 * 1000;
+  
+  const stats = db.prepare(`
+    SELECT 
+      MAX(price) as high,
+      MIN(price) as low,
+      (SELECT price FROM price_snapshots WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT 1) as open_price
+    FROM price_snapshots
+    WHERE timestamp >= ?
+  `).get(since, since);
 
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quote = result.indicators.quote[0];
-
-    const candles = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (quote.open[i] != null && quote.close[i] != null) {
-        candles.push({
-          timestamp: timestamps[i] * 1000, // Convert to milliseconds
-          open: quote.open[i],
-          high: quote.high[i],
-          low: quote.low[i],
-          close: quote.close[i],
-          volume: quote.volume[i] || 0
-        });
-      }
-    }
-
-    // Save to database
-    savePriceHistory(candles);
-
-    return candles;
-  } catch (error) {
-    console.error('Error fetching historical data:', error);
-    // Return cached data if API fails
-    return getCachedHistory(range);
+  if (!stats || !stats.open_price) {
+    return { high: null, low: null, change: 0, changePercent: 0 };
   }
+
+  const latestPrice = db.prepare(`
+    SELECT price FROM price_snapshots ORDER BY timestamp DESC LIMIT 1
+  `).get();
+
+  const currentPrice = latestPrice?.price || 0;
+  const change = currentPrice - stats.open_price;
+  const changePercent = stats.open_price ? (change / stats.open_price) * 100 : 0;
+
+  return {
+    high: stats.high,
+    low: stats.low,
+    change,
+    changePercent,
+  };
 }
 
 /**
@@ -225,11 +348,11 @@ function saveCurrentPrice(priceData) {
     priceData.source
   );
 
-  // Clean up old snapshots (keep last 24 hours)
+  // Clean up old snapshots (keep last 7 days for 24h calculations)
   db.prepare(`
     DELETE FROM price_snapshots 
     WHERE timestamp < ?
-  `).run(Date.now() - 24 * 60 * 60 * 1000);
+  `).run(Date.now() - 7 * 24 * 60 * 60 * 1000);
 }
 
 /**
@@ -252,7 +375,7 @@ function getLastSavedPrice() {
       change24h: row.change_24h,
       changePercent24h: row.change_percent_24h,
       timestamp: row.timestamp,
-      source: row.source + ' (cached)'
+      source: row.source + ' (cached)',
     };
   }
 
@@ -260,12 +383,12 @@ function getLastSavedPrice() {
 }
 
 /**
- * Save price history to database (upsert)
+ * Save price history to database (daily data only)
  */
 function savePriceHistory(candles) {
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO price_history (timestamp, open, high, low, close, volume, source)
-    VALUES (?, ?, ?, ?, ?, ?, 'yahoo_finance')
+    VALUES (?, ?, ?, ?, ?, ?, 'freegoldapi')
   `);
 
   const insertMany = db.transaction((candles) => {
@@ -275,7 +398,7 @@ function savePriceHistory(candles) {
   });
 
   insertMany(candles);
-  console.log(`✅ Saved ${candles.length} candles to database`);
+  console.log(`✅ Saved ${candles.length} daily candles to database`);
 }
 
 /**
@@ -304,7 +427,7 @@ function getCachedHistory(range) {
 }
 
 /**
- * Get price history from database
+ * Get price history from database (daily data)
  */
 export function getPriceHistory(days = 365) {
   const since = Date.now() - (days * 24 * 60 * 60 * 1000);
