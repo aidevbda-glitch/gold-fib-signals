@@ -109,19 +109,19 @@ export class SignalService {
       return { 
         direction: 'UP', 
         strength: Math.min(normalizedSlope * 10, 1),
-        description: 'Price trending upward'
+        description: 'Price has been climbing steadily'
       };
     } else if (normalizedSlope < -0.1) {
       return { 
         direction: 'DOWN', 
         strength: Math.min(Math.abs(normalizedSlope) * 10, 1),
-        description: 'Price trending downward'
+        description: 'Price has been falling'
       };
     } else {
       return { 
         direction: 'SIDEWAYS', 
         strength: 0,
-        description: 'Price moving sideways'
+        description: 'Price has been relatively flat'
       };
     }
   }
@@ -153,19 +153,19 @@ export class SignalService {
       return { 
         momentum: 'BULLISH', 
         reversal,
-        description: reversal ? 'Bullish momentum with potential reversal' : 'Strong bullish momentum'
+        description: reversal ? 'Buyers stepping in after a dip' : 'Strong buying pressure'
       };
     } else if (avgChange < -0.1) {
       return { 
         momentum: 'BEARISH', 
         reversal,
-        description: reversal ? 'Bearish momentum with potential reversal' : 'Strong bearish momentum'
+        description: reversal ? 'Sellers emerging after a rally' : 'Strong selling pressure'
       };
     } else {
       return { 
         momentum: 'NEUTRAL', 
         reversal: false,
-        description: 'Neutral price action'
+        description: 'Neither buyers nor sellers in control'
       };
     }
   }
@@ -241,6 +241,7 @@ export class SignalService {
 
   /**
    * Generate plain-language explanation for the signal
+   * Written in conversational, easy-to-understand language
    */
   private static generateExplanation(
     type: SignalType,
@@ -252,81 +253,122 @@ export class SignalService {
     trend: ReturnType<typeof SignalService.analyzeTrend>,
     priceAction: ReturnType<typeof SignalService.analyzePriceAction>
   ): string {
-    const priceStr = `$${currentPrice.toFixed(2)}`;
-    const fibStr = `$${nearest.value.toFixed(2)}`;
-    const levelStr = nearest.level;
-    const trendStr = fibLevels.direction === 'bullish' ? 'uptrend' : 'downtrend';
-    void trend; // Used for context in full implementation
+    const price = currentPrice.toFixed(2);
+    const fibPrice = nearest.value.toFixed(2);
+    const level = nearest.level;
+    const swingHigh = fibLevels.high.toFixed(2);
+    const swingLow = fibLevels.low.toFixed(2);
+    const isBullishTrend = fibLevels.direction === 'bullish';
 
     const parts: string[] = [];
 
-    // Opening context
-    if (type === 'BUY') {
-      parts.push(`🟢 BUY SIGNAL (${strength})`);
+    // 1. THE SETUP - What's happening right now
+    parts.push(`📍 **What's Happening:**`);
+    parts.push(`Gold just hit $${price}, which is right at the ${level} Fibonacci level ($${fibPrice}).`);
+
+    // 2. THE CONTEXT - Why this level matters
+    parts.push(`\n\n📐 **Why This Level Matters:**`);
+    
+    if (isBullishTrend) {
+      parts.push(`Gold recently rallied from $${swingLow} up to $${swingHigh}. `);
+      parts.push(`After a big move like that, prices often pull back before continuing higher. `);
+      parts.push(`Traders watch Fibonacci levels to find where these pullbacks might stop.`);
     } else {
-      parts.push(`🔴 SELL SIGNAL (${strength})`);
+      parts.push(`Gold recently fell from $${swingHigh} down to $${swingLow}. `);
+      parts.push(`After a big drop, prices often bounce before falling further. `);
+      parts.push(`Traders watch Fibonacci levels to find where these bounces might stall.`);
     }
 
-    // Price and level context
-    parts.push(`\nGold is currently trading at ${priceStr}, which is very close to the ${levelStr} Fibonacci retracement level at ${fibStr}.`);
-
-    // Trend context
-    if (fibLevels.direction === 'bullish') {
-      parts.push(`\nThe overall trend has been bullish, with a recent swing from $${fibLevels.low.toFixed(2)} to $${fibLevels.high.toFixed(2)}.`);
+    // 3. THE FIBONACCI LEVEL EXPLANATION
+    parts.push(`\n\n🎯 **About the ${level} Level:**`);
+    
+    if (level === '38.2%') {
+      parts.push(`This is a shallow pullback level. When price only drops to 38.2%, it usually means the trend is strong. `);
+      parts.push(`Think of it like a car briefly slowing down before speeding up again.`);
+    } else if (level === '50%') {
+      parts.push(`The 50% level is a psychological midpoint – halfway between the high and low. `);
+      parts.push(`Many traders see this as a "fair value" zone where buyers and sellers meet.`);
+    } else if (level === '61.8%') {
+      parts.push(`This is the famous "Golden Ratio" level – the most important Fibonacci number. `);
+      parts.push(`When price holds here, it's often the last stand before the trend resumes. `);
+      parts.push(`A bounce from 61.8% is considered a high-probability trade setup.`);
+    } else if (level === '78.6%') {
+      parts.push(`This is a deep pullback – the trend is being seriously tested. `);
+      parts.push(`If price holds here, it could mean a strong reversal. But if it breaks, the trend may be over.`);
+    } else if (level === '23.6%') {
+      parts.push(`This is a very shallow retracement – the trend is extremely strong. `);
+      parts.push(`Price barely pulled back before buyers/sellers jumped back in.`);
     } else {
-      parts.push(`\nThe overall trend has been bearish, with a recent swing from $${fibLevels.high.toFixed(2)} down to $${fibLevels.low.toFixed(2)}.`);
+      parts.push(`Price is at an extreme level of the recent range.`);
     }
 
-    // Why this signal?
+    // 4. THE SIGNAL REASONING
+    parts.push(`\n\n💡 **Why ${type} Now:**`);
+    
     if (type === 'BUY') {
-      if (fibLevels.direction === 'bullish') {
-        parts.push(`\n\n📊 Why Buy Here?\nIn a ${trendStr}, the ${levelStr} level often acts as support where buyers step in.`);
+      if (isBullishTrend) {
+        parts.push(`The bigger picture is bullish (gold was going up). `);
+        parts.push(`This pullback to the ${level} level looks like a buying opportunity – `);
+        parts.push(`a chance to get in at a lower price before the uptrend continues.`);
         
-        if (nearest.level === '38.2%') {
-          parts.push(` A 38.2% retracement is considered shallow, suggesting the trend is strong and this pullback offers a good entry point.`);
-        } else if (nearest.level === '50%') {
-          parts.push(` The 50% level is a psychological midpoint where many traders look to buy the dip.`);
-        } else if (nearest.level === '61.8%') {
-          parts.push(` The 61.8% level (golden ratio) is the most significant Fibonacci level. Price holding here strongly suggests the uptrend will resume.`);
-        } else if (nearest.level === '78.6%') {
-          parts.push(` This is a deep retracement. While riskier, if price holds here, it often signals a strong reversal.`);
-        }
-
         if (priceAction.reversal) {
-          parts.push(` We're also seeing early signs of a bullish reversal in recent price action.`);
+          parts.push(` We're also seeing early signs of buyers stepping back in.`);
+        }
+        if (priceAction.momentum === 'BULLISH') {
+          parts.push(` Recent price action shows buying pressure building.`);
         }
       } else {
-        parts.push(`\n\n📊 Why Buy Here?\nAlthough the trend has been bearish, price has dropped below the swing low, potentially indicating seller exhaustion and a trend reversal.`);
+        parts.push(`Even though the trend has been down, price has fallen so far that `);
+        parts.push(`sellers might be exhausted. ${priceAction.description}. `);
+        parts.push(`This could be a reversal point.`);
       }
     } else { // SELL
-      if (fibLevels.direction === 'bearish') {
-        parts.push(`\n\n📊 Why Sell Here?\nIn a ${trendStr}, the ${levelStr} level often acts as resistance where sellers step in.`);
+      if (!isBullishTrend) {
+        parts.push(`The bigger picture is bearish (gold was falling). `);
+        parts.push(`This bounce to the ${level} level looks like a selling opportunity – `);
+        parts.push(`a chance to sell at a higher price before the downtrend continues.`);
         
-        if (nearest.level === '38.2%') {
-          parts.push(` A 38.2% retracement is shallow, suggesting selling pressure remains strong.`);
-        } else if (nearest.level === '50%') {
-          parts.push(` The 50% level is a key psychological level where sellers often defend.`);
-        } else if (nearest.level === '61.8%') {
-          parts.push(` The 61.8% level (golden ratio) is critical resistance. Rejection here confirms the downtrend.`);
-        }
-
         if (priceAction.reversal) {
-          parts.push(` Recent price action shows signs of bearish reversal.`);
+          parts.push(` We're also seeing early signs of sellers taking control.`);
+        }
+        if (priceAction.momentum === 'BEARISH') {
+          parts.push(` Recent price action shows selling pressure building.`);
         }
       } else {
-        parts.push(`\n\n📊 Why Sell Here?\nPrice has pushed above the recent swing high and momentum is fading. This could be a good opportunity to take profits or initiate shorts.`);
+        parts.push(`Gold pushed above the recent high, but momentum is fading. `);
+        parts.push(`${priceAction.description}. `);
+        parts.push(`This could be a good spot to take profits or consider shorting.`);
       }
     }
 
-    // Risk note
-    parts.push(`\n\n⚠️ Risk Note: Signal strength is ${strength.toLowerCase()}. `);
+    // 5. TREND CONTEXT
+    parts.push(`\n\n📊 **Current Momentum:**`);
+    parts.push(`${trend.description}. ${priceAction.description}.`);
+
+    // 6. SIGNAL STRENGTH EXPLANATION  
+    parts.push(`\n\n⚡ **Signal Strength: ${strength}**`);
+    
     if (strength === 'STRONG') {
-      parts.push(`Multiple factors align for high confidence.`);
+      parts.push(`Multiple factors are lining up: `);
+      parts.push(`price is at a key Fibonacci level, `);
+      parts.push(`the trend direction supports this trade, `);
+      parts.push(`and recent price action confirms the setup. `);
+      parts.push(`This is a higher-confidence opportunity.`);
     } else if (strength === 'MODERATE') {
-      parts.push(`Consider position sizing accordingly.`);
+      parts.push(`The setup looks decent but not perfect. `);
+      parts.push(`The Fibonacci level is significant and the trend context is right, `);
+      parts.push(`but we'd like to see more confirmation. `);
+      parts.push(`Consider a smaller position size.`);
     } else {
-      parts.push(`Use caution and wait for confirmation.`);
+      parts.push(`This is an early or tentative signal. `);
+      parts.push(`The level is minor or confirmation is lacking. `);
+      parts.push(`Wait for more evidence before acting, or skip this one.`);
     }
+
+    // 7. RISK WARNING
+    parts.push(`\n\n⚠️ **Important:**`);
+    parts.push(`This is analysis, not advice. Fibonacci levels work because many traders watch them – `);
+    parts.push(`but they don't work every time. Always manage your risk and never trade more than you can afford to lose.`);
 
     return parts.join('');
   }
