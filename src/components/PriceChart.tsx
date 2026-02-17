@@ -88,7 +88,7 @@ export function PriceChart() {
                 borderRadius: '8px',
               }}
               labelFormatter={(time) => format(time, 'MMM d, HH:mm')}
-              formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
+              formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
             />
 
             {/* Fibonacci reference lines */}

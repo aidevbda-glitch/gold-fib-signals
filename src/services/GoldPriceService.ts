@@ -1,4 +1,4 @@
-import { GoldQuote, PriceData } from '../types/trading';
+import type { GoldQuote, PriceData } from '../types/trading';
 
 /**
  * Gold Price Service

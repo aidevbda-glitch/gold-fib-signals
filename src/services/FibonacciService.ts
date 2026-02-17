@@ -1,4 +1,4 @@
-import { PriceData, FibonacciLevels } from '../types/trading';
+import type { PriceData, FibonacciLevels } from '../types/trading';
 
 /**
  * Fibonacci Retracement Service

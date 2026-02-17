@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
+import type { 
   PriceData, 
   FibonacciLevels, 
   TradingSignal, 
@@ -18,7 +18,6 @@ import { FibonacciService } from './FibonacciService';
 
 export class SignalService {
   private static readonly PROXIMITY_THRESHOLD = 0.5; // 0.5% proximity to fib level
-  private static readonly STRONG_THRESHOLD = 0.2;    // 0.2% for strong signal
 
   /**
    * Generate a trading signal with full explanation
@@ -32,7 +31,7 @@ export class SignalService {
     const nearest = FibonacciService.findNearestLevel(currentPrice, fibLevels);
     const position = FibonacciService.analyzePosition(currentPrice, fibLevels);
     const trend = this.analyzeTrend(recentPrices);
-    const priceAction = this.analyzePriceAction(recentPrices, currentPrice);
+    const priceAction = this.analyzePriceAction(recentPrices);
 
     // Determine signal type and strength
     const { type, strength } = this.determineSignal(
@@ -130,7 +129,7 @@ export class SignalService {
   /**
    * Analyze recent price action (momentum, reversals)
    */
-  private static analyzePriceAction(prices: PriceData[], currentPrice: number): {
+  private static analyzePriceAction(prices: PriceData[]): {
     momentum: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
     reversal: boolean;
     description: string;
@@ -175,7 +174,7 @@ export class SignalService {
    * Determine signal type and strength based on all factors
    */
   private static determineSignal(
-    currentPrice: number,
+    _currentPrice: number,
     fibLevels: FibonacciLevels,
     nearest: ReturnType<typeof FibonacciService.findNearestLevel>,
     position: ReturnType<typeof FibonacciService.analyzePosition>,
@@ -249,7 +248,7 @@ export class SignalService {
     currentPrice: number,
     fibLevels: FibonacciLevels,
     nearest: ReturnType<typeof FibonacciService.findNearestLevel>,
-    position: ReturnType<typeof FibonacciService.analyzePosition>,
+    _position: ReturnType<typeof FibonacciService.analyzePosition>,
     trend: ReturnType<typeof SignalService.analyzeTrend>,
     priceAction: ReturnType<typeof SignalService.analyzePriceAction>
   ): string {
@@ -257,6 +256,7 @@ export class SignalService {
     const fibStr = `$${nearest.value.toFixed(2)}`;
     const levelStr = nearest.level;
     const trendStr = fibLevels.direction === 'bullish' ? 'uptrend' : 'downtrend';
+    void trend; // Used for context in full implementation
 
     const parts: string[] = [];
 

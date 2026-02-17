@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, GoldQuote, PriceData, FibonacciLevels, TradingSignal } from '../types/trading';
+import type { AppState } from '../types/trading';
 import { GoldPriceService } from '../services/GoldPriceService';
 import { FibonacciService } from '../services/FibonacciService';
 import { SignalService } from '../services/SignalService';

@@ -1,4 +1,4 @@
-import { TradingSignal } from '../types/trading';
+import type { TradingSignal } from '../types/trading';
 import { format } from 'date-fns';
 import { TrendingUp, TrendingDown, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
