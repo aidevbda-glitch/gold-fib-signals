@@ -3,145 +3,85 @@ import type { GoldQuote, PriceData } from '../types/trading';
 /**
  * Gold Price Service
  * 
- * Fetches real-time and historical gold prices.
- * 
- * Free API options:
- * - GoldAPI.io (500 requests/month free)
- * - Metals.dev (100 requests/month free)
- * - MetalpriceAPI (100 requests/month free)
- * 
- * For demo/development, we include a mock data generator.
+ * Fetches real-time and historical gold prices from the backend API.
+ * Falls back to mock data if backend is unavailable.
  */
 
-const API_CONFIG = {
-  // Set your API key in environment variables
-  GOLDAPI_KEY: import.meta.env.VITE_GOLDAPI_KEY || '',
-  METALPRICEAPI_KEY: import.meta.env.VITE_METALPRICEAPI_KEY || '',
-};
+// Use relative URL for Docker (nginx proxies /api to backend)
+// or localhost for development
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export class GoldPriceService {
-  private static lastPrice: number = 2650; // Starting price for mock
+  private static lastPrice: number = 2650;
   private static mockHistory: PriceData[] = [];
+  private static useBackend: boolean = true;
 
   /**
    * Fetch current gold spot price
    */
   static async getCurrentPrice(): Promise<GoldQuote> {
-    // Try real APIs first, fallback to mock
-    if (API_CONFIG.GOLDAPI_KEY) {
-      return this.fetchFromGoldAPI();
-    }
-    
-    if (API_CONFIG.METALPRICEAPI_KEY) {
-      return this.fetchFromMetalPriceAPI();
+    if (this.useBackend) {
+      try {
+        const response = await fetch(`${API_BASE}/price/current`);
+        if (response.ok) {
+          const data = await response.json();
+          return {
+            price: data.price,
+            bid: data.bid,
+            ask: data.ask,
+            high24h: data.high24h,
+            low24h: data.low24h,
+            change24h: data.change24h,
+            changePercent24h: data.changePercent24h,
+            timestamp: data.timestamp,
+            source: data.source,
+          };
+        }
+      } catch (error) {
+        console.warn('Backend unavailable, using mock data:', error);
+        this.useBackend = false;
+      }
     }
 
-    // Mock data for development
+    // Fallback to mock data
     return this.generateMockQuote();
-  }
-
-  /**
-   * Fetch from GoldAPI.io
-   */
-  private static async fetchFromGoldAPI(): Promise<GoldQuote> {
-    const response = await fetch('https://www.goldapi.io/api/XAU/USD', {
-      headers: {
-        'x-access-token': API_CONFIG.GOLDAPI_KEY,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`GoldAPI error: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    return {
-      price: data.price,
-      bid: data.price_gram_24k * 31.1035, // Convert from gram to oz
-      ask: data.price_gram_24k * 31.1035 * 1.001,
-      high24h: data.high_price || data.price * 1.005,
-      low24h: data.low_price || data.price * 0.995,
-      change24h: data.ch || 0,
-      changePercent24h: data.chp || 0,
-      timestamp: Date.now(),
-      source: 'GoldAPI.io',
-    };
-  }
-
-  /**
-   * Fetch from MetalPriceAPI
-   */
-  private static async fetchFromMetalPriceAPI(): Promise<GoldQuote> {
-    const response = await fetch(
-      `https://api.metalpriceapi.com/v1/latest?api_key=${API_CONFIG.METALPRICEAPI_KEY}&base=XAU&currencies=USD`
-    );
-
-    if (!response.ok) {
-      throw new Error(`MetalPriceAPI error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const price = 1 / data.rates.USD; // API returns USD per XAU, we want XAU price in USD
-
-    return {
-      price,
-      bid: price * 0.999,
-      ask: price * 1.001,
-      high24h: price * 1.005,
-      low24h: price * 0.995,
-      change24h: 0,
-      changePercent24h: 0,
-      timestamp: Date.now(),
-      source: 'MetalPriceAPI',
-    };
-  }
-
-  /**
-   * Generate mock quote with realistic price movement
-   */
-  private static generateMockQuote(): GoldQuote {
-    // Simulate realistic gold price movement
-    const volatility = 0.001; // 0.1% typical movement
-    const drift = (Math.random() - 0.5) * 2 * volatility;
-    
-    this.lastPrice = this.lastPrice * (1 + drift);
-    
-    // Keep price in realistic range ($2000 - $3000)
-    this.lastPrice = Math.max(2000, Math.min(3000, this.lastPrice));
-
-    const spread = this.lastPrice * 0.0005; // 0.05% spread
-
-    return {
-      price: this.lastPrice,
-      bid: this.lastPrice - spread / 2,
-      ask: this.lastPrice + spread / 2,
-      high24h: this.lastPrice * 1.008,
-      low24h: this.lastPrice * 0.992,
-      change24h: this.lastPrice * (Math.random() - 0.5) * 0.02,
-      changePercent24h: (Math.random() - 0.5) * 2,
-      timestamp: Date.now(),
-      source: 'Mock Data',
-    };
   }
 
   /**
    * Get historical price data
    */
-  static async getHistoricalData(periods: number = 50): Promise<PriceData[]> {
-    // For real implementation, fetch from API
-    // For now, generate mock historical data
-    
+  static async getHistoricalData(periods: number = 50, range: string = '1y'): Promise<PriceData[]> {
+    if (this.useBackend) {
+      try {
+        const response = await fetch(`${API_BASE}/price/history?range=${range}&interval=1d`);
+        if (response.ok) {
+          const result = await response.json();
+          this.mockHistory = result.data.map((d: any) => ({
+            timestamp: d.timestamp,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+            volume: d.volume,
+          }));
+          
+          // Return last N periods
+          return this.mockHistory.slice(-periods);
+        }
+      } catch (error) {
+        console.warn('Backend unavailable for history, using mock:', error);
+      }
+    }
+
+    // Fallback: generate mock historical data
     if (this.mockHistory.length >= periods) {
       return this.mockHistory.slice(-periods);
     }
 
-    // Generate historical data
     const history: PriceData[] = [];
-    let price = 2600; // Starting price
+    let price = 2600;
     const now = Date.now();
-    const interval = 15 * 60 * 1000; // 15-minute candles
+    const interval = 15 * 60 * 1000;
 
     for (let i = periods; i > 0; i--) {
       const volatility = 0.003;
@@ -172,11 +112,35 @@ export class GoldPriceService {
   }
 
   /**
-   * Add new candle to history (for real-time updates)
+   * Generate mock quote with realistic price movement
+   */
+  private static generateMockQuote(): GoldQuote {
+    const volatility = 0.001;
+    const drift = (Math.random() - 0.5) * 2 * volatility;
+    
+    this.lastPrice = this.lastPrice * (1 + drift);
+    this.lastPrice = Math.max(2000, Math.min(3000, this.lastPrice));
+
+    const spread = this.lastPrice * 0.0005;
+
+    return {
+      price: this.lastPrice,
+      bid: this.lastPrice - spread / 2,
+      ask: this.lastPrice + spread / 2,
+      high24h: this.lastPrice * 1.008,
+      low24h: this.lastPrice * 0.992,
+      change24h: this.lastPrice * (Math.random() - 0.5) * 0.02,
+      changePercent24h: (Math.random() - 0.5) * 2,
+      timestamp: Date.now(),
+      source: 'Mock Data (Backend Unavailable)',
+    };
+  }
+
+  /**
+   * Add new candle to history
    */
   static addCandle(candle: PriceData): void {
     this.mockHistory.push(candle);
-    // Keep last 200 candles
     if (this.mockHistory.length > 200) {
       this.mockHistory = this.mockHistory.slice(-200);
     }
@@ -188,13 +152,11 @@ export class GoldPriceService {
   static async simulateTick(): Promise<GoldQuote> {
     const quote = await this.getCurrentPrice();
     
-    // Update the last candle or create new one
     if (this.mockHistory.length > 0) {
       const lastCandle = this.mockHistory[this.mockHistory.length - 1];
       const candleAge = Date.now() - lastCandle.timestamp;
       
       if (candleAge > 15 * 60 * 1000) {
-        // Create new candle
         this.addCandle({
           timestamp: Date.now(),
           open: quote.price,
@@ -203,7 +165,6 @@ export class GoldPriceService {
           close: quote.price,
         });
       } else {
-        // Update current candle
         lastCandle.close = quote.price;
         lastCandle.high = Math.max(lastCandle.high, quote.price);
         lastCandle.low = Math.min(lastCandle.low, quote.price);
@@ -211,5 +172,22 @@ export class GoldPriceService {
     }
 
     return quote;
+  }
+
+  /**
+   * Check if backend is available
+   */
+  static async checkBackend(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE}/health`, { 
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      });
+      this.useBackend = response.ok;
+      return response.ok;
+    } catch {
+      this.useBackend = false;
+      return false;
+    }
   }
 }

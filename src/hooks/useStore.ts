@@ -1,17 +1,21 @@
 import { create } from 'zustand';
-import type { AppState } from '../types/trading';
+import type { AppState, TradingSignal } from '../types/trading';
 import { GoldPriceService } from '../services/GoldPriceService';
 import { FibonacciService } from '../services/FibonacciService';
 import { SignalService } from '../services/SignalService';
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 interface StoreActions {
   fetchCurrentPrice: () => Promise<void>;
-  fetchHistoricalData: () => Promise<void>;
+  fetchHistoricalData: (range?: string) => Promise<void>;
   calculateFibLevels: () => void;
   generateSignal: () => void;
   startRealTimeUpdates: () => () => void;
   setError: (error: string | null) => void;
   clearSignals: () => void;
+  loadSignalsFromBackend: () => Promise<void>;
+  saveSignalToBackend: (signal: TradingSignal) => Promise<void>;
 }
 
 type Store = AppState & StoreActions;
@@ -36,7 +40,6 @@ export const useStore = create<Store>((set, get) => ({
         error: null 
       });
       
-      // Auto-calculate Fib levels and check for signals
       const state = get();
       if (state.priceHistory.length > 0) {
         get().calculateFibLevels();
@@ -47,17 +50,16 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  fetchHistoricalData: async () => {
+  fetchHistoricalData: async (range: string = '1y') => {
     set({ isLoading: true });
     try {
-      const history = await GoldPriceService.getHistoricalData(50);
+      const history = await GoldPriceService.getHistoricalData(50, range);
       set({ 
         priceHistory: history, 
         isLoading: false,
         error: null 
       });
       
-      // Calculate initial Fib levels
       get().calculateFibLevels();
     } catch (error) {
       set({ 
@@ -102,7 +104,6 @@ export const useStore = create<Store>((set, get) => ({
 
     const lastSignal = signals.length > 0 ? signals[signals.length - 1] : null;
     
-    // Check if we should generate a new signal
     if (!SignalService.shouldGenerateSignal(lastSignal, currentPrice.price)) {
       return;
     }
@@ -114,11 +115,49 @@ export const useStore = create<Store>((set, get) => ({
     );
 
     if (signal) {
-      set({ signals: [...signals, signal].slice(-50) }); // Keep last 50 signals
+      const newSignals = [...signals, signal].slice(-50);
+      set({ signals: newSignals });
+      
+      // Persist to backend
+      get().saveSignalToBackend(signal);
+    }
+  },
+
+  saveSignalToBackend: async (signal: TradingSignal) => {
+    try {
+      await fetch(`${API_BASE}/signals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(signal),
+      });
+    } catch (error) {
+      console.warn('Failed to save signal to backend:', error);
+    }
+  },
+
+  loadSignalsFromBackend: async () => {
+    try {
+      const response = await fetch(`${API_BASE}/signals?limit=50`);
+      if (response.ok) {
+        const result = await response.json();
+        set({ signals: result.data.reverse() }); // Reverse to get chronological order
+      }
+    } catch (error) {
+      console.warn('Failed to load signals from backend:', error);
     }
   },
 
   startRealTimeUpdates: () => {
+    // Check backend availability
+    GoldPriceService.checkBackend().then((available) => {
+      if (available) {
+        console.log('✅ Backend API connected');
+        get().loadSignalsFromBackend();
+      } else {
+        console.log('⚠️ Backend unavailable, using mock data');
+      }
+    });
+
     // Fetch initial data
     get().fetchHistoricalData();
     get().fetchCurrentPrice();
@@ -128,7 +167,6 @@ export const useStore = create<Store>((set, get) => ({
       get().fetchCurrentPrice();
     }, 5000);
 
-    // Return cleanup function
     return () => clearInterval(interval);
   },
 

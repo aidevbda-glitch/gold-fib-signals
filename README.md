@@ -2,124 +2,199 @@
 
 A real-time trading signal application for Gold (XAU/USD) based on **Fibonacci retracement** analysis. The app monitors gold prices, identifies key Fibonacci levels, and generates buy/sell signals with **plain-language explanations**.
 
-![Gold Fib Signals Screenshot](screenshot.png)
-
 ## Features
 
-- 📈 **Real-time gold price tracking** (XAU/USD)
+- 📈 **Real-time gold price tracking** (XAU/USD via Yahoo Finance API - FREE)
 - 🔢 **Automatic Fibonacci level calculation** from price swings
 - 🟢🔴 **Buy/Sell signal generation** based on Fibonacci confluence
 - 💬 **Plain-language explanations** for every signal
 - 📊 **Interactive price chart** with Fibonacci overlays
 - 🎯 **Signal strength indicators** (Strong/Moderate/Weak)
+- 🏦 **Gold Products comparison** (Spot, Futures, ETFs, CFDs, Options)
+- 💾 **SQLite persistence** for signals and price history
+- 🐳 **Docker support** for easy deployment
 
-## How It Works
+## Architecture
 
-### Fibonacci Retracement Levels
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Docker Compose                        │
+├─────────────────────┬───────────────────────────────────┤
+│     Frontend        │           Backend                  │
+│  (React + Nginx)    │    (Node.js + Express)            │
+│     Port 8080       │        Port 3001                  │
+│                     │                                    │
+│  ┌───────────────┐  │  ┌─────────────────────────────┐  │
+│  │  React App    │  │  │  Express API Server         │  │
+│  │  - Charts     │◄─┼──┤  - /api/price/current       │  │
+│  │  - Signals    │  │  │  - /api/price/history       │  │
+│  │  - Products   │  │  │  - /api/signals             │  │
+│  └───────────────┘  │  └──────────┬──────────────────┘  │
+│                     │             │                      │
+│                     │  ┌──────────▼──────────────────┐  │
+│                     │  │  SQLite Database            │  │
+│                     │  │  - Price history (3 years)  │  │
+│                     │  │  - Trading signals          │  │
+│                     │  │  - Price snapshots          │  │
+│                     │  └─────────────────────────────┘  │
+└─────────────────────┴───────────────────────────────────┘
+                              │
+                              ▼
+                    Yahoo Finance API (FREE)
+                    - Real-time prices
+                    - Historical OHLCV data
+```
 
-The app calculates these key retracement levels from recent price swings:
-
-| Level | Significance |
-|-------|-------------|
-| **23.6%** | Minor retracement |
-| **38.2%** | Shallow retracement (strong trend) |
-| **50%** | Psychological midpoint |
-| **61.8%** | Golden ratio - KEY level |
-| **78.6%** | Deep retracement |
-
-### Signal Logic
-
-**BUY Signals** are generated when:
-- Price retraces to a key Fibonacci support level (38.2%, 50%, 61.8%)
-- Trend context is bullish
-- Price action shows signs of reversal
-
-**SELL Signals** are generated when:
-- Price retraces to a key Fibonacci resistance level
-- Trend context is bearish
-- Price action shows signs of reversal
-
-Each signal includes a detailed explanation of **why** it was generated.
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-
-### Installation
+## Quick Start with Docker 🐳
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/gold-fib-signals.git
+git clone https://github.com/aidevbda-glitch/gold-fib-signals.git
 cd gold-fib-signals
+
+# Build and run with Docker Compose
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Access the app
+open http://localhost:8080
+```
+
+### Docker Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Frontend | 8080 | React app served by Nginx |
+| Backend | 3001 | Node.js API with SQLite |
+
+### Data Persistence
+
+SQLite database is stored in a Docker volume (`gold-data`). Data persists across container restarts.
+
+## Development Setup
+
+### Prerequisites
+- Node.js 20+
+- npm or yarn
+
+### Frontend Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+### Backend Development
+
+```bash
+cd backend
 
 # Install dependencies
 npm install
 
-# Start development server
+# Start dev server (with auto-reload)
 npm run dev
+
+# Or start production server
+npm start
 ```
 
-### API Configuration (Optional)
+### Environment Variables
 
-For real gold price data, set up API keys in `.env`:
+Create `.env` in the root directory:
 
 ```env
-# GoldAPI.io (500 requests/month free)
-VITE_GOLDAPI_KEY=your_api_key_here
+# API URL (for frontend)
+VITE_API_URL=http://localhost:3001/api
 
-# OR MetalpriceAPI (100 requests/month free)
-VITE_METALPRICEAPI_KEY=your_api_key_here
+# Backend port
+PORT=3001
 ```
 
-Without API keys, the app uses realistic mock data for demonstration.
+## API Endpoints
+
+### Price Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/price/current` | GET | Current gold price |
+| `/api/price/history?range=1y&interval=1d` | GET | Historical OHLCV data |
+| `/api/price/cached?days=365` | GET | Cached history from DB |
+
+**Range options:** `1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `3y`, `max`
+**Interval options:** `1m`, `5m`, `15m`, `1h`, `1d`, `1wk`, `1mo`
+
+### Signal Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/signals` | GET | Get signals (paginated) |
+| `/api/signals` | POST | Save a new signal |
+| `/api/signals/latest` | GET | Get most recent signal |
+| `/api/signals/stats` | GET | Get signal statistics |
+| `/api/signals/range?start=&end=` | GET | Signals by date range |
+
+## Data Sources
+
+### Yahoo Finance (FREE - No API Key Required)
+- **Symbol:** `GC=F` (Gold Futures COMEX)
+- **Real-time:** Updates every few seconds during market hours
+- **Historical:** Up to 20 years of daily data
+- **No cost, no rate limits** (reasonable usage)
+
+## Gold Product Types
+
+The app includes a separate screen comparing different ways to trade gold:
+
+| Product | Risk | Best For |
+|---------|------|----------|
+| **Spot (XAU/USD)** | Medium | Day/swing traders |
+| **Futures (GC)** | High | Experienced traders, hedgers |
+| **Physical ETFs** | Low | Long-term investors |
+| **Miners ETFs** | High | Growth investors |
+| **CFDs** | Very High | Short-term speculators |
+| **Options** | High | Options traders, hedgers |
+
+Each product type lists recommended brokers with ratings, fees, and pros/cons.
 
 ## Tech Stack
 
-- **React 18** + TypeScript
-- **Vite** - Build tool
-- **Zustand** - State management
-- **Recharts** - Charting
-- **Tailwind CSS** - Styling
-- **Lucide React** - Icons
+- **Frontend:** React 19, TypeScript, Vite, Zustand, Recharts, Tailwind CSS
+- **Backend:** Node.js, Express, better-sqlite3
+- **Infrastructure:** Docker, Nginx
+- **Data:** Yahoo Finance API (free)
 
 ## Project Structure
 
 ```
-src/
-├── components/
-│   ├── PriceDisplay.tsx      # Current gold price card
-│   ├── PriceChart.tsx        # Price chart with Fib levels
-│   ├── FibonacciLevels.tsx   # Fib level display
-│   ├── SignalCard.tsx        # Individual signal card
-│   └── SignalsList.tsx       # Signals feed
-├── services/
-│   ├── FibonacciService.ts   # Fib calculation logic
-│   ├── SignalService.ts      # Signal generation + explanations
-│   └── GoldPriceService.ts   # Price data fetching
-├── hooks/
-│   └── useStore.ts           # Zustand store
-├── types/
-│   └── trading.ts            # TypeScript types
-└── App.tsx                   # Main app component
+gold-fib-signals/
+├── src/                      # Frontend source
+│   ├── components/           # React components
+│   ├── services/             # API services
+│   ├── hooks/                # Custom hooks (Zustand store)
+│   ├── types/                # TypeScript types
+│   ├── pages/                # Page components
+│   └── data/                 # Static data (products, brokers)
+├── backend/                  # Backend source
+│   ├── src/
+│   │   ├── index.js          # Express server
+│   │   ├── database.js       # SQLite setup
+│   │   ├── goldPriceService.js
+│   │   └── signalService.js
+│   └── data/                 # SQLite database files
+├── docker-compose.yml        # Docker orchestration
+├── Dockerfile                # Frontend container
+├── nginx.conf                # Nginx configuration
+└── backend/Dockerfile        # Backend container
 ```
-
-## Signal Explanation Example
-
-When a BUY signal is generated, you'll see something like:
-
-> 🟢 **BUY SIGNAL (STRONG)**
-> 
-> Gold is currently trading at $2,645.30, which is very close to the 61.8% Fibonacci retracement level at $2,644.50.
-> 
-> The overall trend has been bullish, with a recent swing from $2,580.00 to $2,750.00.
-> 
-> **📊 Why Buy Here?**
-> In an uptrend, the 61.8% level (golden ratio) is the most significant Fibonacci level. Price holding here strongly suggests the uptrend will resume. We're also seeing early signs of a bullish reversal in recent price action.
-> 
-> **⚠️ Risk Note:** Signal strength is strong. Multiple factors align for high confidence.
 
 ## Disclaimer
 
