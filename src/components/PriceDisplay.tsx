@@ -44,7 +44,7 @@ export function PriceDisplay() {
   const spread = currentPrice.ask - currentPrice.bid;
 
   return (
-    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-3 py-4 sm:p-6">
+    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-4 py-4 sm:p-6">
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
           <span className="text-xl sm:text-2xl">🥇</span>
@@ -60,7 +60,7 @@ export function PriceDisplay() {
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
-          <span className="text-sm text-gray-400">{currentPrice.source}</span>
+          <span className="text-sm text-gray-400 hidden sm:inline">{currentPrice.source}</span>
         </div>
       </div>
 
@@ -101,7 +101,7 @@ export function PriceDisplay() {
       </div>
 
       {lastUpdate && (
-        <div className="flex items-center justify-between mt-4 text-xs text-gray-500">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 text-xs text-gray-500 gap-1 sm:gap-0">
           <span>Last updated: {new Date(lastUpdate).toLocaleTimeString()}</span>
           <span>Live data from Swissquote forex feed</span>
         </div>
