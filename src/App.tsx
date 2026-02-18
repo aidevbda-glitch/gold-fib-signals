@@ -52,38 +52,41 @@ function App() {
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-500/20 rounded-lg">
-                <Activity className="w-6 h-6 text-yellow-400" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-4">
+          {/* Mobile: Stack vertically, Desktop: Side by side */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+            {/* Logo & Title */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-1.5 sm:p-2 bg-yellow-500/20 rounded-lg shrink-0">
+                <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-white">Gold Fib Signals</h1>
-                <p className="text-sm text-gray-400">Fibonacci-based trading signals for XAU/USD</p>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-bold text-white">Gold Fib Signals</h1>
+                <p className="text-xs sm:text-sm text-gray-400 hidden min-[400px]:block">Fibonacci trading signals for XAU/USD</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            {/* Navigation Buttons */}
+            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0 scrollbar-none">
               <button
                 onClick={() => setCurrentPage('buy')}
-                className="flex items-center gap-2 px-3 py-2 bg-green-900/50 hover:bg-green-800/50 text-green-400 rounded-lg transition-colors border border-green-700/50"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-green-900/50 hover:bg-green-800/50 text-green-400 rounded-lg transition-colors border border-green-700/50 text-sm shrink-0"
                 title="Buy Signals (BID)"
               >
                 <TrendingUp className="w-4 h-4" />
-                <span className="hidden sm:inline">Buy</span>
+                <span className="hidden min-[480px]:inline">Buy</span>
               </button>
               <button
                 onClick={() => setCurrentPage('sell')}
-                className="flex items-center gap-2 px-3 py-2 bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg transition-colors border border-red-700/50"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg transition-colors border border-red-700/50 text-sm shrink-0"
                 title="Sell Signals (ASK)"
               >
                 <TrendingDown className="w-4 h-4" />
-                <span className="hidden sm:inline">Sell</span>
+                <span className="hidden min-[480px]:inline">Sell</span>
               </button>
               <button
                 onClick={() => setCurrentPage('analysis')}
-                className="flex items-center gap-2 px-3 py-2 bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 rounded-lg transition-colors border border-purple-700/50"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 rounded-lg transition-colors border border-purple-700/50 text-sm shrink-0"
                 title="Technical Analysis"
               >
                 <Gauge className="w-4 h-4" />
@@ -91,25 +94,25 @@ function App() {
               </button>
               <button
                 onClick={() => setCurrentPage('products')}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm shrink-0"
               >
                 <Layers className="w-4 h-4" />
                 <span className="hidden md:inline">Products</span>
               </button>
               <button
                 onClick={() => setCurrentPage('settings')}
-                className="p-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors shrink-0"
                 title="Settings"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <a
                 href="https://github.com/aidevbda-glitch/gold-fib-signals"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2 text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 sm:p-2 text-gray-400 hover:text-white transition-colors shrink-0"
               >
-                <Github className="w-5 h-5" />
+                <Github className="w-4 h-4 sm:w-5 sm:h-5" />
               </a>
             </div>
           </div>
