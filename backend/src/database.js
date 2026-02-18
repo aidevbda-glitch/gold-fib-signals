@@ -19,7 +19,8 @@ db.pragma('journal_mode = WAL');
 
 // Initialize tables
 db.exec(`
-  -- Price history table
+  -- Historical daily price data (from FreeGoldAPI)
+  -- Used as reference for charts
   CREATE TABLE IF NOT EXISTS price_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp INTEGER NOT NULL UNIQUE,
@@ -28,8 +29,47 @@ db.exec(`
     low REAL NOT NULL,
     close REAL NOT NULL,
     volume INTEGER,
-    source TEXT DEFAULT 'api',
+    source TEXT DEFAULT 'freegoldapi',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Intraday price ticks from Swissquote
+  -- Stores every price update for accuracy tracking
+  -- Retained for up to 1 year
+  CREATE TABLE IF NOT EXISTS intraday_ticks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,
+    bid REAL NOT NULL,
+    ask REAL NOT NULL,
+    mid REAL NOT NULL,
+    spread REAL NOT NULL,
+    source TEXT DEFAULT 'swissquote',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Daily aggregated data from Swissquote intraday ticks
+  -- One row per day with bid/ask high/low tracking
+  CREATE TABLE IF NOT EXISTS daily_aggregates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,  -- YYYY-MM-DD format
+    bid_open REAL,
+    bid_high REAL NOT NULL,
+    bid_low REAL NOT NULL,
+    bid_close REAL,
+    ask_open REAL,
+    ask_high REAL NOT NULL,
+    ask_low REAL NOT NULL,
+    ask_close REAL,
+    mid_open REAL,
+    mid_high REAL NOT NULL,
+    mid_low REAL NOT NULL,
+    mid_close REAL,
+    tick_count INTEGER DEFAULT 0,
+    first_tick_at INTEGER,
+    last_tick_at INTEGER,
+    source TEXT DEFAULT 'swissquote',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   -- Trading signals table
@@ -46,7 +86,7 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  -- Current price snapshots
+  -- Current price snapshots (for 24h stats)
   CREATE TABLE IF NOT EXISTS price_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     price REAL NOT NULL,
@@ -63,6 +103,8 @@ db.exec(`
 
   -- Indexes for faster queries
   CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_intraday_ticks_timestamp ON intraday_ticks(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_daily_aggregates_date ON daily_aggregates(date);
   CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp);
   CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(type);
   CREATE INDEX IF NOT EXISTS idx_price_snapshots_timestamp ON price_snapshots(timestamp);

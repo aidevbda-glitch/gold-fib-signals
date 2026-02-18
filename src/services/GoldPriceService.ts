@@ -66,10 +66,19 @@ export class GoldPriceService {
 
   /**
    * Get historical price data (daily candles)
+   * Uses /api/price/database which combines FreeGoldAPI + Swissquote aggregates
    */
   static async getHistoricalData(periods: number = 50, range: string = '1y'): Promise<PriceData[]> {
     try {
-      const response = await fetch(`${API_BASE}/price/history?range=${range}&interval=1d`, {
+      // Calculate days from range
+      const rangeToDays: Record<string, number> = {
+        '1d': 1, '5d': 5, '1mo': 30, '3mo': 90,
+        '6mo': 180, '1y': 365, '2y': 730, '5y': 1825
+      };
+      const days = rangeToDays[range] || 365;
+
+      // Use database endpoint for chart data (combines historical + Swissquote)
+      const response = await fetch(`${API_BASE}/price/database?days=${days}`, {
         signal: AbortSignal.timeout(15000)
       });
       

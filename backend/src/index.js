@@ -1,6 +1,16 @@
 import express from 'express';
 import cors from 'cors';
-import { fetchCurrentPrice, fetchHistoricalData, getPriceHistory, fetchFromConfiguredApi, manualRefresh } from './goldPriceService.js';
+import { 
+  fetchCurrentPrice, 
+  fetchHistoricalData, 
+  getPriceHistory, 
+  fetchFromConfiguredApi, 
+  manualRefresh,
+  getIntradayTicks,
+  getDailyAggregates,
+  getAccuracyComparison,
+  getHistoryFromDatabase
+} from './goldPriceService.js';
 import { saveSignal, getSignals, getSignalStats, getLatestSignal, getSignalsByDateRange } from './signalService.js';
 import {
   getAllApiProviders,
@@ -127,6 +137,108 @@ app.get('/api/price/cached', (req, res) => {
   } catch (error) {
     console.error('Error fetching cached history:', error);
     res.status(500).json({ error: 'Failed to fetch cached data' });
+  }
+});
+
+/**
+ * GET /api/price/intraday
+ * Get intraday Swissquote tick data
+ * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD)
+ */
+app.get('/api/price/intraday', (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const start = req.query.start || today;
+    const end = req.query.end || today;
+
+    const ticks = getIntradayTicks(start, end);
+    res.json({
+      start,
+      end,
+      count: ticks.length,
+      data: ticks
+    });
+  } catch (error) {
+    console.error('Error fetching intraday ticks:', error);
+    res.status(500).json({ error: 'Failed to fetch intraday data' });
+  }
+});
+
+/**
+ * GET /api/price/daily-aggregates
+ * Get daily bid/ask high/low aggregates from Swissquote data
+ * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD)
+ */
+app.get('/api/price/daily-aggregates', (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString().split('T')[0];
+    
+    const start = req.query.start || thirtyDaysAgo;
+    const end = req.query.end || today;
+
+    const aggregates = getDailyAggregates(start, end);
+    res.json({
+      start,
+      end,
+      count: aggregates.length,
+      data: aggregates
+    });
+  } catch (error) {
+    console.error('Error fetching daily aggregates:', error);
+    res.status(500).json({ error: 'Failed to fetch daily aggregates' });
+  }
+});
+
+/**
+ * GET /api/price/accuracy
+ * Compare Swissquote data against FreeGoldAPI for accuracy analysis
+ * Query params: date (YYYY-MM-DD)
+ */
+app.get('/api/price/accuracy', (req, res) => {
+  try {
+    const date = req.query.date;
+    if (!date) {
+      return res.status(400).json({ error: 'Date parameter required (YYYY-MM-DD)' });
+    }
+
+    const comparison = getAccuracyComparison(date);
+    if (!comparison) {
+      return res.status(404).json({ 
+        error: 'No data available for comparison on this date',
+        date 
+      });
+    }
+
+    res.json(comparison);
+  } catch (error) {
+    console.error('Error fetching accuracy comparison:', error);
+    res.status(500).json({ error: 'Failed to fetch accuracy data' });
+  }
+});
+
+/**
+ * GET /api/price/database
+ * Get chart data from database (combines historical + Swissquote aggregates)
+ * Query params: days (default 365)
+ */
+app.get('/api/price/database', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 365;
+    const history = getHistoryFromDatabase(Math.min(days, 1095));
+    res.json({
+      days,
+      count: history.length,
+      sources: {
+        historical: 'FreeGoldAPI',
+        recent: 'Swissquote (aggregated)'
+      },
+      data: history
+    });
+  } catch (error) {
+    console.error('Error fetching database history:', error);
+    res.status(500).json({ error: 'Failed to fetch database history' });
   }
 });
 
@@ -448,9 +560,14 @@ Endpoints:
   GET  /health                      - Health check
   
   Price:
-  GET  /api/price/current           - Current gold price
-  GET  /api/price/history           - Historical data
+  GET  /api/price/current           - Current gold price (Swissquote)
+  GET  /api/price/history           - Historical data (FreeGoldAPI)
   GET  /api/price/cached            - Cached history from DB
+  GET  /api/price/database          - Chart data (historical + aggregates)
+  GET  /api/price/intraday          - Intraday Swissquote ticks
+  GET  /api/price/daily-aggregates  - Daily bid/ask high/low
+  GET  /api/price/accuracy          - Compare data sources
+  POST /api/price/refresh           - Manual refresh from Swissquote
   
   Signals:
   POST /api/signals                 - Save a signal
