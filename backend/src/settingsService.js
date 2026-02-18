@@ -212,3 +212,100 @@ export function setRefreshSettings(settings) {
   setSetting('refresh', settings);
   return getRefreshSettings();
 }
+
+/**
+ * Get Fibonacci settings
+ * 
+ * Repricing Options:
+ * - 'weekly': Recalculate at start of each week (recommended for position trading)
+ * - 'daily': Recalculate at start of each day (for swing trading)
+ * - 'on_breakout': Recalculate when price breaks swing high/low
+ * - 'manual': Only recalculate on user request
+ * 
+ * Lookback Periods:
+ * - 20: Short-term (last 20 candles)
+ * - 50: Medium-term (last 50 candles)
+ * - 100: Long-term (last 100 candles)
+ */
+export function getFibonacciSettings() {
+  return getSetting('fibonacci') || {
+    repricingMode: 'weekly',        // weekly, daily, on_breakout, manual
+    lookbackPeriod: 50,             // Number of candles to find swing points
+    primaryTimeframe: 'daily',      // daily, weekly, 4h
+    autoRecalcOnBreakout: true,     // Auto-recalc when price breaks swing high/low
+    lastRecalculated: null,
+    swingHigh: null,
+    swingLow: null,
+  };
+}
+
+/**
+ * Update Fibonacci settings
+ */
+export function setFibonacciSettings(settings) {
+  const current = getFibonacciSettings();
+  const updated = { ...current, ...settings };
+  setSetting('fibonacci', updated);
+  return getFibonacciSettings();
+}
+
+/**
+ * Check if Fibonacci levels need recalculation
+ */
+export function shouldRecalculateFibonacci() {
+  const settings = getFibonacciSettings();
+  const now = Date.now();
+  
+  if (!settings.lastRecalculated) {
+    return { shouldRecalc: true, reason: 'Never calculated' };
+  }
+
+  const lastRecalc = settings.lastRecalculated;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const weekMs = 7 * dayMs;
+
+  switch (settings.repricingMode) {
+    case 'weekly': {
+      // Check if we're in a new week
+      const lastRecalcDate = new Date(lastRecalc);
+      const nowDate = new Date(now);
+      const lastWeek = getWeekNumber(lastRecalcDate);
+      const currentWeek = getWeekNumber(nowDate);
+      
+      if (lastWeek !== currentWeek || lastRecalcDate.getFullYear() !== nowDate.getFullYear()) {
+        return { shouldRecalc: true, reason: 'New week started' };
+      }
+      break;
+    }
+    case 'daily': {
+      // Check if we're in a new day
+      const lastRecalcDay = new Date(lastRecalc).toDateString();
+      const currentDay = new Date(now).toDateString();
+      
+      if (lastRecalcDay !== currentDay) {
+        return { shouldRecalc: true, reason: 'New day started' };
+      }
+      break;
+    }
+    case 'on_breakout': {
+      // This is handled separately by checking price vs swing high/low
+      return { shouldRecalc: false, reason: 'Breakout mode - check price vs swings' };
+    }
+    case 'manual': {
+      return { shouldRecalc: false, reason: 'Manual mode - user triggered only' };
+    }
+  }
+
+  return { shouldRecalc: false, reason: 'No recalculation needed' };
+}
+
+/**
+ * Get ISO week number
+ */
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}

@@ -1,7 +1,31 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Check, X, RefreshCw, TestTube, Save, Settings2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Check, X, RefreshCw, TestTube, Save, Settings2, TrendingUp } from 'lucide-react';
 import type { ApiProvider, RefreshSettings } from '../types/settings';
 import { REFRESH_INTERVALS } from '../types/settings';
+
+interface FibonacciSettings {
+  repricingMode: 'weekly' | 'daily' | 'on_breakout' | 'manual';
+  lookbackPeriod: number;
+  primaryTimeframe: 'daily' | 'weekly' | '4h';
+  autoRecalcOnBreakout: boolean;
+  lastRecalculated: number | null;
+  swingHigh: number | null;
+  swingLow: number | null;
+}
+
+const REPRICING_MODES = {
+  weekly: { label: 'Weekly', description: 'Recalculate at start of each week (recommended)' },
+  daily: { label: 'Daily', description: 'Recalculate at start of each day' },
+  on_breakout: { label: 'On Breakout', description: 'Recalculate when price breaks swing high/low' },
+  manual: { label: 'Manual', description: 'Only recalculate on user request' },
+};
+
+const LOOKBACK_PERIODS = [
+  { value: 20, label: '20 days', description: 'Short-term swings' },
+  { value: 50, label: '50 days', description: 'Medium-term swings (recommended)' },
+  { value: 100, label: '100 days', description: 'Long-term swings' },
+  { value: 200, label: '200 days', description: 'Major swings' },
+];
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -12,12 +36,14 @@ interface SettingsPageProps {
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [refreshSettings, setRefreshSettings] = useState<RefreshSettings | null>(null);
+  const [fibSettings, setFibSettings] = useState<FibonacciSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [_editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   // Form state for adding/editing
   const [formData, setFormData] = useState({
@@ -36,9 +62,10 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const [providersRes, refreshRes] = await Promise.all([
+      const [providersRes, refreshRes, fibRes] = await Promise.all([
         fetch(`${API_BASE}/settings/providers`),
         fetch(`${API_BASE}/settings/refresh`),
+        fetch(`${API_BASE}/settings/fibonacci`),
       ]);
 
       if (providersRes.ok) {
@@ -49,6 +76,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       if (refreshRes.ok) {
         const data = await refreshRes.json();
         setRefreshSettings(data.data);
+      }
+
+      if (fibRes.ok) {
+        const data = await fibRes.json();
+        setFibSettings(data.data);
       }
     } catch (err) {
       setError('Failed to load settings');
@@ -159,6 +191,41 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       }
     } catch (err) {
       setError('Failed to update refresh settings');
+    }
+  };
+
+  const handleUpdateFibSettings = async (updates: Partial<FibonacciSettings>) => {
+    try {
+      const response = await fetch(`${API_BASE}/settings/fibonacci`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFibSettings(data.data);
+      }
+    } catch (err) {
+      setError('Failed to update Fibonacci settings');
+    }
+  };
+
+  const handleRecalculateFib = async () => {
+    setIsRecalculating(true);
+    try {
+      const response = await fetch(`${API_BASE}/settings/fibonacci/recalculate`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFibSettings(data.data);
+      }
+    } catch (err) {
+      setError('Failed to trigger recalculation');
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -428,6 +495,114 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
               Last refresh: {new Date(refreshSettings.lastRefresh).toLocaleString()}
             </p>
           )}
+        </section>
+
+        {/* Fibonacci Settings Section */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-6 h-6 text-yellow-400" />
+              <div>
+                <h2 className="text-lg font-bold text-white">Fibonacci Repricing</h2>
+                <p className="text-sm text-gray-400">Configure when Fibonacci levels are recalculated</p>
+              </div>
+            </div>
+            <button
+              onClick={handleRecalculateFib}
+              disabled={isRecalculating}
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-600 text-black font-medium rounded-lg transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
+              Recalculate Now
+            </button>
+          </div>
+
+          {/* Repricing Mode */}
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-white mb-3">Repricing Mode</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {Object.entries(REPRICING_MODES).map(([key, { label, description }]) => (
+                <button
+                  key={key}
+                  onClick={() => handleUpdateFibSettings({ repricingMode: key as FibonacciSettings['repricingMode'] })}
+                  className={`p-4 rounded-lg border text-left transition-all ${
+                    fibSettings?.repricingMode === key
+                      ? 'bg-yellow-500/20 border-yellow-500'
+                      : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'
+                  }`}
+                >
+                  <p className={`font-medium ${fibSettings?.repricingMode === key ? 'text-yellow-400' : 'text-white'}`}>
+                    {label}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">{description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Lookback Period */}
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-white mb-3">Lookback Period</h3>
+            <p className="text-xs text-gray-400 mb-3">Number of days to analyze for finding swing high/low points</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {LOOKBACK_PERIODS.map(({ value, label, description }) => (
+                <button
+                  key={value}
+                  onClick={() => handleUpdateFibSettings({ lookbackPeriod: value })}
+                  className={`p-3 rounded-lg border transition-all ${
+                    fibSettings?.lookbackPeriod === value
+                      ? 'bg-blue-500/20 border-blue-500'
+                      : 'bg-gray-700/50 border-gray-600 hover:border-gray-500'
+                  }`}
+                >
+                  <p className={`font-medium ${fibSettings?.lookbackPeriod === value ? 'text-blue-400' : 'text-white'}`}>
+                    {label}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">{description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Auto Recalc on Breakout */}
+          <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+            <div>
+              <p className="font-medium text-white">Auto-recalculate on Breakout</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Automatically recalculate when price breaks above swing high or below swing low
+              </p>
+            </div>
+            <button
+              onClick={() => handleUpdateFibSettings({ autoRecalcOnBreakout: !fibSettings?.autoRecalcOnBreakout })}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                fibSettings?.autoRecalcOnBreakout ? 'bg-green-500' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  fibSettings?.autoRecalcOnBreakout ? 'translate-x-7' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Last Recalculated Info */}
+          {fibSettings?.lastRecalculated && (
+            <p className="text-xs text-gray-500 mt-4">
+              Last recalculated: {new Date(fibSettings.lastRecalculated).toLocaleString()}
+            </p>
+          )}
+
+          {/* Best Practices Info */}
+          <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+            <h4 className="text-sm font-medium text-blue-400 mb-2">📚 Best Practices</h4>
+            <ul className="text-xs text-gray-300 space-y-1">
+              <li>• <strong>Weekly repricing</strong> is recommended for position/swing trading gold</li>
+              <li>• <strong>50-day lookback</strong> captures medium-term swings effectively</li>
+              <li>• Fibonacci levels gain strength when multiple timeframes align</li>
+              <li>• Recalculate manually after significant market events</li>
+            </ul>
+          </div>
         </section>
 
         {/* Default GoldAPI.io Configuration */}

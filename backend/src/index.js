@@ -25,7 +25,10 @@ import {
   setRefreshSettings,
   getAllSettings,
   setSetting,
-  getSetting
+  getSetting,
+  getFibonacciSettings,
+  setFibonacciSettings,
+  shouldRecalculateFibonacci
 } from './settingsService.js';
 
 const app = express();
@@ -514,6 +517,100 @@ app.put('/api/settings/refresh', (req, res) => {
 });
 
 /**
+ * GET /api/settings/fibonacci
+ * Get Fibonacci repricing settings
+ */
+app.get('/api/settings/fibonacci', (req, res) => {
+  try {
+    const settings = getFibonacciSettings();
+    const recalcCheck = shouldRecalculateFibonacci();
+    res.json({ 
+      data: settings,
+      recalculationStatus: recalcCheck
+    });
+  } catch (error) {
+    console.error('Error fetching Fibonacci settings:', error);
+    res.status(500).json({ error: 'Failed to fetch Fibonacci settings' });
+  }
+});
+
+/**
+ * PUT /api/settings/fibonacci
+ * Update Fibonacci repricing settings
+ * 
+ * Options:
+ * - repricingMode: 'weekly' | 'daily' | 'on_breakout' | 'manual'
+ * - lookbackPeriod: 20 | 50 | 100 (number of candles)
+ * - primaryTimeframe: 'daily' | 'weekly' | '4h'
+ * - autoRecalcOnBreakout: boolean
+ */
+app.put('/api/settings/fibonacci', (req, res) => {
+  try {
+    const { repricingMode, lookbackPeriod, primaryTimeframe, autoRecalcOnBreakout } = req.body;
+    
+    const validModes = ['weekly', 'daily', 'on_breakout', 'manual'];
+    if (repricingMode && !validModes.includes(repricingMode)) {
+      return res.status(400).json({ 
+        error: 'Invalid repricing mode. Valid: ' + validModes.join(', '),
+        description: {
+          weekly: 'Recalculate at start of each week (recommended for position trading)',
+          daily: 'Recalculate at start of each day (for swing trading)',
+          on_breakout: 'Recalculate when price breaks swing high/low',
+          manual: 'Only recalculate on user request'
+        }
+      });
+    }
+
+    const validLookbacks = [20, 50, 100, 200];
+    if (lookbackPeriod && !validLookbacks.includes(lookbackPeriod)) {
+      return res.status(400).json({ 
+        error: 'Invalid lookback period. Valid: ' + validLookbacks.join(', ') 
+      });
+    }
+
+    const validTimeframes = ['daily', 'weekly', '4h'];
+    if (primaryTimeframe && !validTimeframes.includes(primaryTimeframe)) {
+      return res.status(400).json({ 
+        error: 'Invalid primary timeframe. Valid: ' + validTimeframes.join(', ') 
+      });
+    }
+
+    const settings = setFibonacciSettings({
+      ...(repricingMode && { repricingMode }),
+      ...(lookbackPeriod && { lookbackPeriod }),
+      ...(primaryTimeframe && { primaryTimeframe }),
+      ...(autoRecalcOnBreakout !== undefined && { autoRecalcOnBreakout }),
+    });
+
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error updating Fibonacci settings:', error);
+    res.status(500).json({ error: 'Failed to update Fibonacci settings' });
+  }
+});
+
+/**
+ * POST /api/settings/fibonacci/recalculate
+ * Force recalculation of Fibonacci levels
+ */
+app.post('/api/settings/fibonacci/recalculate', (req, res) => {
+  try {
+    const settings = setFibonacciSettings({
+      lastRecalculated: Date.now(),
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Fibonacci levels will be recalculated on next price update',
+      data: settings 
+    });
+  } catch (error) {
+    console.error('Error triggering Fibonacci recalculation:', error);
+    res.status(500).json({ error: 'Failed to trigger recalculation' });
+  }
+});
+
+/**
  * POST /api/settings/providers/:id/test
  * Test an API provider connection
  */
@@ -650,6 +747,9 @@ Endpoints:
   POST /api/settings/providers/:id/test - Test provider
   GET  /api/settings/refresh        - Get refresh settings
   PUT  /api/settings/refresh        - Update refresh settings
+  GET  /api/settings/fibonacci      - Get Fibonacci repricing settings
+  PUT  /api/settings/fibonacci      - Update Fibonacci settings
+  POST /api/settings/fibonacci/recalculate - Force recalculation
 ================================
   `);
 
