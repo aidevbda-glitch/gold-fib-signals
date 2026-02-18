@@ -539,6 +539,87 @@ export async function manualRefresh() {
 }
 
 /**
+ * Fetch from Swissquote only (for automatic polling)
+ * Saves tick and updates aggregates without fallback
+ */
+export async function fetchFromSwissquoteOnly() {
+  try {
+    const response = await fetch(SWISSQUOTE_URL, {
+      headers: {
+        'User-Agent': 'GoldFibSignals/1.0',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Swissquote API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data || data.length === 0) {
+      throw new Error('Empty response from Swissquote');
+    }
+
+    const quote = data[0];
+    const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium') 
+      || quote.spreadProfilePrices[0];
+
+    const priceData = {
+      price: (prices.bid + prices.ask) / 2,
+      bid: prices.bid,
+      ask: prices.ask,
+      timestamp: quote.ts || Date.now(),
+      source: 'Swissquote',
+    };
+
+    // Save tick and update aggregates
+    saveIntradayTick(priceData);
+    updateDailyAggregate(priceData);
+
+    return priceData;
+  } catch (error) {
+    console.error('Swissquote poll failed:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get tick statistics for monitoring
+ */
+export function getTickStats() {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Today's tick count
+  const todayTicks = db.prepare(`
+    SELECT COUNT(*) as count FROM intraday_ticks 
+    WHERE timestamp >= ?
+  `).get(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Total ticks
+  const totalTicks = db.prepare('SELECT COUNT(*) as count FROM intraday_ticks').get();
+
+  // Today's aggregate
+  const todayAggregate = db.prepare('SELECT * FROM daily_aggregates WHERE date = ?').get(today);
+
+  // Database size estimate
+  const dbSize = db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").get();
+
+  return {
+    today: {
+      date: today,
+      tickCount: todayTicks?.count || 0,
+      aggregate: todayAggregate || null,
+    },
+    total: {
+      tickCount: totalTicks?.count || 0,
+      dbSizeBytes: dbSize?.size || 0,
+      dbSizeMB: ((dbSize?.size || 0) / 1024 / 1024).toFixed(2),
+    }
+  };
+}
+
+/**
  * Get price history (for API endpoint)
  */
 export function getPriceHistory(days = 365) {

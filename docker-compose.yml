@@ -27,6 +27,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      # Swissquote polling interval in milliseconds
+      # Default: 60000 (1 minute)
+      # For 30-second polling: 30000
+      - POLL_INTERVAL_MS=60000
     restart: unless-stopped
     networks:
       - gold-network

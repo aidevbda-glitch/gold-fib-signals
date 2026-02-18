@@ -9,7 +9,9 @@ import {
   getIntradayTicks,
   getDailyAggregates,
   getAccuracyComparison,
-  getHistoryFromDatabase
+  getHistoryFromDatabase,
+  fetchFromSwissquoteOnly,
+  getTickStats
 } from './goldPriceService.js';
 import { saveSignal, getSignals, getSignalStats, getLatestSignal, getSignalsByDateRange } from './signalService.js';
 import {
@@ -547,7 +549,65 @@ app.post('/api/settings/providers/:id/test', async (req, res) => {
   }
 });
 
+// ==================== POLLING ENDPOINTS ====================
+
+/**
+ * GET /api/polling/stats
+ * Get tick collection statistics
+ */
+app.get('/api/polling/stats', (req, res) => {
+  try {
+    const stats = getTickStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching polling stats:', error);
+    res.status(500).json({ error: 'Failed to fetch polling stats' });
+  }
+});
+
+/**
+ * GET /api/polling/config
+ * Get polling configuration
+ */
+app.get('/api/polling/config', (req, res) => {
+  const intervalMs = parseInt(process.env.POLL_INTERVAL_MS) || 60000;
+  res.json({
+    enabled: true,
+    intervalMs,
+    intervalSeconds: intervalMs / 1000,
+    source: 'Swissquote',
+    retention: '1 year'
+  });
+});
+
 // ==================== START SERVER ====================
+
+// Polling configuration (default: 1 minute, can be set via env)
+const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS) || 60000; // 60 seconds default
+let pollCount = 0;
+let pollErrors = 0;
+
+/**
+ * Automatic Swissquote polling
+ * Collects bid/ask data every minute (configurable)
+ */
+async function pollSwissquote() {
+  try {
+    const result = await fetchFromSwissquoteOnly();
+    if (result) {
+      pollCount++;
+      if (pollCount % 60 === 0) { // Log every hour
+        const stats = getTickStats();
+        console.log(`📊 Polling stats: ${stats.today.tickCount} ticks today, ${stats.total.tickCount} total (${stats.total.dbSizeMB} MB)`);
+      }
+    } else {
+      pollErrors++;
+    }
+  } catch (error) {
+    pollErrors++;
+    console.error('Poll error:', error.message);
+  }
+}
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
@@ -555,6 +615,7 @@ app.listen(PORT, '0.0.0.0', () => {
 ================================
 Port: ${PORT}
 Time: ${new Date().toISOString()}
+Poll Interval: ${POLL_INTERVAL_MS / 1000} seconds
 
 Endpoints:
   GET  /health                      - Health check
@@ -576,6 +637,10 @@ Endpoints:
   GET  /api/signals/stats           - Get statistics
   GET  /api/signals/range           - Get signals by date range
   
+  Polling:
+  GET  /api/polling/stats           - Tick collection statistics
+  GET  /api/polling/config          - Polling configuration
+  
   Settings:
   GET  /api/settings                - Get all settings
   GET  /api/settings/providers      - Get API providers
@@ -592,4 +657,11 @@ Endpoints:
   console.log('📊 Fetching initial price data...');
   fetchCurrentPrice().then(() => console.log('✅ Current price loaded'));
   fetchHistoricalData('1y', '1d').then(() => console.log('✅ 1-year history loaded'));
+
+  // Start automatic polling
+  console.log(`⏱️  Starting Swissquote polling every ${POLL_INTERVAL_MS / 1000} seconds...`);
+  setInterval(pollSwissquote, POLL_INTERVAL_MS);
+  
+  // Initial poll
+  setTimeout(pollSwissquote, 5000);
 });
