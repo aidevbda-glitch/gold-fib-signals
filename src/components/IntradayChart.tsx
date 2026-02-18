@@ -81,24 +81,24 @@ export function IntradayChart() {
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Clock className="w-5 h-5 text-blue-400" />
-          <h3 className="text-lg font-bold text-white">Intraday Chart</h3>
-          <span className={`flex items-center gap-1 text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+    <div className="bg-gray-800 rounded-xl px-3 py-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+          <h3 className="text-base sm:text-lg font-bold text-white">Intraday Chart</h3>
+          <span className={`flex items-center gap-1 text-xs sm:text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {priceChange >= 0 ? <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4" />}
             {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
           </span>
         </div>
         
         {/* View Mode Selector */}
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto scrollbar-none -mx-1 px-1 sm:mx-0 sm:px-0">
           {(['1h', '4h', '12h', 'today'] as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
-              className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+              className={`px-3 py-1 text-xs rounded-lg transition-colors shrink-0 ${
                 viewMode === mode
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -111,7 +111,7 @@ export function IntradayChart() {
       </div>
 
       {/* Stats Bar */}
-      <div className="grid grid-cols-4 gap-4 mb-4 text-sm">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4 text-xs sm:text-sm">
         <div className="bg-gray-700/50 rounded-lg p-2">
           <span className="text-gray-400 text-xs">Bid High</span>
           <p className="text-green-400 font-medium">${bidHigh.toFixed(2)}</p>
