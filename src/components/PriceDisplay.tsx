@@ -44,7 +44,7 @@ export function PriceDisplay() {
   const spread = currentPrice.ask - currentPrice.bid;
 
   return (
-    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-4 py-4 sm:p-6">
+    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-3.5 py-4 sm:p-6">
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
           <span className="text-xl sm:text-2xl">🥇</span>
