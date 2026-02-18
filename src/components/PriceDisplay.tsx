@@ -44,11 +44,11 @@ export function PriceDisplay() {
   const spread = currentPrice.ask - currentPrice.bid;
 
   return (
-    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-3 py-4 sm:p-6">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🥇</span>
-          <h2 className="text-xl font-bold text-yellow-400">Gold Spot (XAU/USD)</h2>
+          <span className="text-xl sm:text-2xl">🥇</span>
+          <h2 className="text-base sm:text-xl font-bold text-yellow-400">Gold Spot (XAU/USD)</h2>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -64,20 +64,20 @@ export function PriceDisplay() {
         </div>
       </div>
 
-      <div className="flex items-end gap-4 mb-4">
-        <span className="text-5xl font-bold text-white">
+      <div className="flex items-end gap-3 sm:gap-4 mb-3 sm:mb-4">
+        <span className="text-3xl sm:text-5xl font-bold text-white">
           ${currentPrice.price.toFixed(2)}
         </span>
         <div className="flex flex-col">
-          <div className={`flex items-center gap-1 ${trendColor} text-lg`}>
-            <TrendIcon className="w-5 h-5" />
+          <div className={`flex items-center gap-1 ${trendColor} text-sm sm:text-lg`}>
+            <TrendIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>{isPositive ? '+' : ''}{currentPrice.changePercent24h.toFixed(2)}%</span>
           </div>
           <span className="text-xs text-gray-500">24h Change</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-4 text-xs sm:text-sm">
         <div>
           <span className="text-gray-400">Bid (Buy at)</span>
           <p className="text-green-400 font-medium">${currentPrice.bid.toFixed(2)}</p>
