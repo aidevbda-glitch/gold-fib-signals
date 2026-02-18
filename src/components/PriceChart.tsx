@@ -12,12 +12,27 @@ import {
 import { format } from 'date-fns';
 
 export function PriceChart() {
-  const { priceHistory, fibLevels, currentPrice } = useStore();
+  const { priceHistory, fibLevels, currentPrice, selectedRange, isLoading } = useStore();
 
-  if (priceHistory.length === 0) {
+  // Map range to label
+  const rangeLabels: Record<string, string> = {
+    '1d': '1 Day',
+    '5d': '5 Days',
+    '1mo': '1 Month',
+    '3mo': '3 Months',
+    '6mo': '6 Months',
+    '1y': '1 Year',
+    '2y': '2 Years',
+    '5y': '5 Years',
+  };
+
+  if (priceHistory.length === 0 || isLoading) {
     return (
       <div className="bg-gray-800 rounded-xl p-6 h-80 flex items-center justify-center">
-        <p className="text-gray-400">Loading chart data...</p>
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+          <p className="text-gray-400">Loading {rangeLabels[selectedRange] || selectedRange} chart data...</p>
+        </div>
       </div>
     );
   }
@@ -77,9 +92,11 @@ export function PriceChart() {
   return (
     <div className="bg-gray-800 rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-white">Daily Price Chart with Fibonacci Levels</h3>
+        <h3 className="text-lg font-bold text-white">
+          {rangeLabels[selectedRange] || selectedRange} Price Chart
+        </h3>
         <span className="text-xs text-gray-500">
-          {chartData.length} days • Smallest unit: 1 day
+          {chartData.length} days • Daily candles
         </span>
       </div>
       

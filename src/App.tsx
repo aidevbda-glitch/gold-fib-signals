@@ -1,22 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useState } from 'react';
 import { useStore } from './hooks/useStore';
 import { PriceDisplay } from './components/PriceDisplay';
 import { FibonacciLevels } from './components/FibonacciLevels';
 import { SignalsList } from './components/SignalsList';
 import { PriceChart } from './components/PriceChart';
+import { IntradayChart } from './components/IntradayChart';
 import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
 import { SellSignalsPage } from './pages/SellSignalsPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 
 type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell';
 
+type ChartView = 'daily' | 'intraday';
+
 function App() {
-  const { startRealTimeUpdates, error } = useStore();
+  const { startRealTimeUpdates, error, selectedRange, setSelectedRange } = useStore();
   const [currentPage, setCurrentPage] = useState<Page>('signals');
-  const [selectedTimeframe, setSelectedTimeframe] = useState('1m'); // Default 1 month
+  const [chartView, setChartView] = useState<ChartView>('daily');
 
   useEffect(() => {
     const cleanup = startRealTimeUpdates();
@@ -115,33 +119,71 @@ function App() {
           <div className="lg:col-span-2 space-y-6">
             <PriceDisplay />
             
-            {/* Timeframe Selector */}
+            {/* Chart View Toggle */}
             <div className="bg-gray-800 rounded-xl p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <Clock className="w-5 h-5 text-gray-400" />
-                <h3 className="text-sm font-medium text-white">Chart Timeframe</h3>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {TIMEFRAMES.map((tf) => (
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="w-5 h-5 text-gray-400" />
+                  <h3 className="text-sm font-medium text-white">Chart View</h3>
+                </div>
+                <div className="flex gap-1">
                   <button
-                    key={tf.value}
-                    onClick={() => setSelectedTimeframe(tf.value)}
+                    onClick={() => setChartView('daily')}
                     className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      selectedTimeframe === tf.value
+                      chartView === 'daily'
                         ? 'bg-yellow-500 text-black font-medium'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
-                    {tf.label}
+                    Daily
                   </button>
-                ))}
+                  <button
+                    onClick={() => setChartView('intraday')}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      chartView === 'intraday'
+                        ? 'bg-blue-500 text-white font-medium'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    Intraday
+                  </button>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                📊 Historical data: Demo uses simulated data. Connect a real API for full {TIMEFRAMES.find(t => t.value === selectedTimeframe)?.label} history.
-              </p>
+
+              {/* Timeframe Selector (only for daily view) */}
+              {chartView === 'daily' && (
+                <>
+                  <div className="flex items-center gap-3 mb-2">
+                    <Clock className="w-4 h-4 text-gray-500" />
+                    <span className="text-xs text-gray-400">Timeframe</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {TIMEFRAMES.map((tf) => (
+                      <button
+                        key={tf.value}
+                        onClick={() => setSelectedRange(tf.value)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          selectedRange === tf.value
+                            ? 'bg-yellow-500 text-black font-medium'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {tf.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {chartView === 'intraday' && (
+                <p className="text-xs text-gray-500">
+                  📊 Real-time bid/ask data from Swissquote • Updated every minute
+                </p>
+              )}
             </div>
 
-            <PriceChart />
+            {/* Chart */}
+            {chartView === 'daily' ? <PriceChart /> : <IntradayChart />}
             <SignalsList />
           </div>
 

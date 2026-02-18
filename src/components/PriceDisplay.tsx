@@ -68,9 +68,12 @@ export function PriceDisplay() {
         <span className="text-5xl font-bold text-white">
           ${currentPrice.price.toFixed(2)}
         </span>
-        <div className={`flex items-center gap-1 ${trendColor} text-lg`}>
-          <TrendIcon className="w-5 h-5" />
-          <span>{isPositive ? '+' : ''}{currentPrice.changePercent24h.toFixed(2)}%</span>
+        <div className="flex flex-col">
+          <div className={`flex items-center gap-1 ${trendColor} text-lg`}>
+            <TrendIcon className="w-5 h-5" />
+            <span>{isPositive ? '+' : ''}{currentPrice.changePercent24h.toFixed(2)}%</span>
+          </div>
+          <span className="text-xs text-gray-500">24h Change</span>
         </div>
       </div>
 

@@ -57,12 +57,23 @@ export interface GoldQuote {
   source: string;
 }
 
+export interface IntradayTick {
+  timestamp: number;
+  bid: number;
+  ask: number;
+  mid: number;
+  spread: number;
+  source: string;
+}
+
 export interface AppState {
   currentPrice: GoldQuote | null;
   priceHistory: PriceData[];
+  intradayData: IntradayTick[];
   fibLevels: FibonacciLevels | null;
   signals: TradingSignal[];
   isLoading: boolean;
   error: string | null;
   lastUpdate: number | null;
+  selectedRange: string;
 }

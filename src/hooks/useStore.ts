@@ -9,6 +9,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 interface StoreActions {
   fetchCurrentPrice: () => Promise<void>;
   fetchHistoricalData: (range?: string) => Promise<void>;
+  fetchIntradayData: () => Promise<void>;
   calculateFibLevels: () => void;
   generateSignal: () => void;
   startRealTimeUpdates: () => () => void;
@@ -16,6 +17,7 @@ interface StoreActions {
   clearSignals: () => void;
   loadSignalsFromBackend: () => Promise<void>;
   saveSignalToBackend: (signal: TradingSignal) => Promise<void>;
+  setSelectedRange: (range: string) => void;
 }
 
 type Store = AppState & StoreActions;
@@ -24,11 +26,13 @@ export const useStore = create<Store>((set, get) => ({
   // Initial state
   currentPrice: null,
   priceHistory: [],
+  intradayData: [],
   fibLevels: null,
   signals: [],
   isLoading: false,
   error: null,
   lastUpdate: null,
+  selectedRange: '1mo',
 
   // Actions
   fetchCurrentPrice: async () => {
@@ -50,10 +54,11 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  fetchHistoricalData: async (range: string = '1y') => {
-    set({ isLoading: true });
+  fetchHistoricalData: async (range?: string) => {
+    const selectedRange = range || get().selectedRange;
+    set({ isLoading: true, selectedRange });
     try {
-      const history = await GoldPriceService.getHistoricalData(50, range);
+      const history = await GoldPriceService.getHistoricalData(200, selectedRange);
       set({ 
         priceHistory: history, 
         isLoading: false,
@@ -67,6 +72,24 @@ export const useStore = create<Store>((set, get) => ({
         isLoading: false 
       });
     }
+  },
+
+  fetchIntradayData: async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`${API_BASE}/price/intraday?start=${today}&end=${today}`);
+      if (response.ok) {
+        const result = await response.json();
+        set({ intradayData: result.data || [] });
+      }
+    } catch (error) {
+      console.warn('Failed to fetch intraday data:', error);
+    }
+  },
+
+  setSelectedRange: (range: string) => {
+    set({ selectedRange: range });
+    get().fetchHistoricalData(range);
   },
 
   calculateFibLevels: () => {
@@ -161,13 +184,22 @@ export const useStore = create<Store>((set, get) => ({
     // Fetch initial data
     get().fetchHistoricalData();
     get().fetchCurrentPrice();
+    get().fetchIntradayData();
 
-    // Update every 5 seconds
-    const interval = setInterval(() => {
+    // Update price every 5 seconds
+    const priceInterval = setInterval(() => {
       get().fetchCurrentPrice();
     }, 5000);
 
-    return () => clearInterval(interval);
+    // Update intraday data every 30 seconds
+    const intradayInterval = setInterval(() => {
+      get().fetchIntradayData();
+    }, 30000);
+
+    return () => {
+      clearInterval(priceInterval);
+      clearInterval(intradayInterval);
+    };
   },
 
   setError: (error) => set({ error }),
