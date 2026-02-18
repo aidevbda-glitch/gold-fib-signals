@@ -10,10 +10,11 @@ import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
 import { SellSignalsPage } from './pages/SellSignalsPage';
+import { AnalysisPage } from './pages/AnalysisPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -41,6 +42,10 @@ function App() {
 
   if (currentPage === 'sell') {
     return <SellSignalsPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'analysis') {
+    return <AnalysisPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -75,6 +80,14 @@ function App() {
               >
                 <TrendingDown className="w-4 h-4" />
                 <span className="hidden sm:inline">Sell</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('analysis')}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 rounded-lg transition-colors border border-purple-700/50"
+                title="Technical Analysis"
+              >
+                <Gauge className="w-4 h-4" />
+                <span className="hidden lg:inline">Analysis</span>
               </button>
               <button
                 onClick={() => setCurrentPage('products')}
