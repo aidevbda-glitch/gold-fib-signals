@@ -6,6 +6,7 @@ import { FibonacciLevels } from './components/FibonacciLevels';
 import { SignalsList } from './components/SignalsList';
 import { PriceChart } from './components/PriceChart';
 import { IntradayChart } from './components/IntradayChart';
+import { LastSignalBanner } from './components/LastSignalBanner';
 import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
@@ -134,6 +135,9 @@ function App() {
           {/* Left Column - Price & Chart */}
           <div className="lg:col-span-2 space-y-6">
             <PriceDisplay />
+            
+            {/* Last Signal Banner - shows most recent signal from last 3 days */}
+            <LastSignalBanner />
             
             {/* Chart View Toggle */}
             <div className="bg-gray-800 rounded-xl p-4">

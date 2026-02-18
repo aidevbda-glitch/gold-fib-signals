@@ -160,13 +160,32 @@ export const useStore = create<Store>((set, get) => ({
 
   loadSignalsFromBackend: async () => {
     try {
-      const response = await fetch(`${API_BASE}/signals?limit=50`);
+      // Fetch signals from the last 3 days
+      const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+      const response = await fetch(`${API_BASE}/signals/range?start=${threeDaysAgo}&end=${Date.now()}`);
       if (response.ok) {
         const result = await response.json();
-        set({ signals: result.data.reverse() }); // Reverse to get chronological order
+        const signals = result.data.reverse(); // Reverse to get chronological order
+        set({ signals });
+        
+        // Log the most recent signal for user awareness
+        if (signals.length > 0) {
+          const latest = signals[signals.length - 1];
+          console.log(`📊 Last signal (${latest.type}): $${latest.price.toFixed(2)} at ${new Date(latest.timestamp).toLocaleString()}`);
+        }
       }
     } catch (error) {
       console.warn('Failed to load signals from backend:', error);
+      // Fallback to simple query
+      try {
+        const fallback = await fetch(`${API_BASE}/signals?limit=50`);
+        if (fallback.ok) {
+          const result = await fallback.json();
+          set({ signals: result.data.reverse() });
+        }
+      } catch {
+        // Ignore fallback errors
+      }
     }
   },
 

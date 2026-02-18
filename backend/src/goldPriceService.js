@@ -386,12 +386,13 @@ function getCachedHistory(range) {
  */
 export function getIntradayTicks(startDate, endDate) {
   const startTs = new Date(startDate).getTime();
-  const endTs = new Date(endDate).getTime();
+  // Add 24 hours to include the full end date (endDate at midnight means start of that day)
+  const endTs = new Date(endDate).getTime() + (24 * 60 * 60 * 1000);
 
   return db.prepare(`
     SELECT timestamp, bid, ask, mid, spread, source
     FROM intraday_ticks
-    WHERE timestamp >= ? AND timestamp <= ?
+    WHERE timestamp >= ? AND timestamp < ?
     ORDER BY timestamp ASC
   `).all(startTs, endTs);
 }
