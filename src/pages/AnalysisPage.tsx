@@ -166,6 +166,66 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
               </div>
             </div>
 
+            {/* Signal Conflict Explanation */}
+            <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/10 border border-amber-500/30 rounded-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Info className="w-6 h-6 text-amber-400" />
+                <h2 className="text-lg font-bold text-white">Understanding Signal Conflicts</h2>
+              </div>
+              
+              <p className="text-gray-300 text-sm mb-4">
+                It's common for <strong className="text-yellow-400">Fibonacci signals</strong> and <strong className="text-purple-400">Technical Analysis</strong> to suggest different actions. 
+                This isn't a bug — they measure different things:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-yellow-400 font-medium mb-2">🎯 Fibonacci Signals</h4>
+                  <ul className="text-sm text-gray-400 space-y-1">
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>Counter-trend: looks for <strong className="text-white">reversals</strong> at key levels</span></li>
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>Short-term focus (hours to days)</span></li>
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>SELL at resistance, BUY at support</span></li>
+                  </ul>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-purple-400 font-medium mb-2">📊 Technical Analysis</h4>
+                  <ul className="text-sm text-gray-400 space-y-1">
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>Trend-following: shows current <strong className="text-white">momentum</strong></span></li>
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>Medium-term focus (days to weeks)</span></li>
+                    <li className="flex gap-2"><span className="shrink-0">•</span><span>BUY when momentum up, SELL when down</span></li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="bg-gray-800/70 rounded-lg p-4">
+                <h4 className="text-white font-medium mb-3">Common Conflict Scenarios:</h4>
+                <div className="space-y-3 text-sm">
+                  <div className="flex gap-3">
+                    <span className="shrink-0 px-2 py-1 bg-red-900/50 text-red-400 rounded text-xs font-bold">FIB SELL</span>
+                    <span className="shrink-0 px-2 py-1 bg-green-900/50 text-green-400 rounded text-xs font-bold">TA BUY</span>
+                    <span className="text-gray-300">= Price trending UP but hit resistance. <strong className="text-yellow-400">Short-term pullback likely</strong>, underlying trend still bullish.</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="shrink-0 px-2 py-1 bg-green-900/50 text-green-400 rounded text-xs font-bold">FIB BUY</span>
+                    <span className="shrink-0 px-2 py-1 bg-red-900/50 text-red-400 rounded text-xs font-bold">TA SELL</span>
+                    <span className="text-gray-300">= Price trending DOWN but hit support. <strong className="text-yellow-400">Short-term bounce likely</strong>, underlying trend still bearish.</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="shrink-0 px-2 py-1 bg-green-900/50 text-green-400 rounded text-xs font-bold">BOTH BUY</span>
+                    <span className="text-gray-300">= Strong alignment. Price at support AND momentum bullish. <strong className="text-green-400">Higher confidence long entry.</strong></span>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="shrink-0 px-2 py-1 bg-red-900/50 text-red-400 rounded text-xs font-bold">BOTH SELL</span>
+                    <span className="text-gray-300">= Strong alignment. Price at resistance AND momentum bearish. <strong className="text-red-400">Higher confidence short/exit.</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-gray-500 text-xs mt-4">
+                💡 <strong>Pro tip:</strong> Conflicting signals often indicate a market at an inflection point. Consider waiting for confirmation or reducing position size.
+              </p>
+            </div>
+
             {/* Indicators Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* EMA Card */}
