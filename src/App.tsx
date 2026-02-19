@@ -91,20 +91,20 @@ function App() {
                 <span className="hidden min-[480px]:inline">Sell</span>
               </button>
               <button
-                onClick={() => setCurrentPage('analysis')}
-                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 rounded-lg transition-colors border border-purple-700/50 text-sm shrink-0"
-                title="Technical Analysis"
-              >
-                <Gauge className="w-4 h-4" />
-                <span className="hidden lg:inline">Analysis</span>
-              </button>
-              <button
                 onClick={() => setCurrentPage('patterns')}
                 className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-400 rounded-lg transition-colors border border-indigo-700/50 text-sm shrink-0"
                 title="Pattern Recognition"
               >
                 <CandlestickChart className="w-4 h-4" />
                 <span className="hidden min-[480px]:inline">Patterns</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('analysis')}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-900/50 hover:bg-purple-800/50 text-purple-400 rounded-lg transition-colors border border-purple-700/50 text-sm shrink-0"
+                title="Technical Analysis"
+              >
+                <Gauge className="w-4 h-4" />
+                <span className="hidden lg:inline">Analysis</span>
               </button>
               <button
                 onClick={() => setCurrentPage('products')}

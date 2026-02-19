@@ -81,7 +81,7 @@ export function BuySignalsPage({ onBack }: BuySignalsPageProps) {
         {/* Current Bid Price Card */}
         <div className="bg-gradient-to-br from-green-900/40 to-green-800/20 border border-green-500/30 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-green-400">Current BID Price (Buy at)</h2>
+            <h2 className="text-lg font-bold text-green-400">Current BID Price <span className="block sm:inline">(Buy at)</span></h2>
             {currentPrice && (
               <span className="text-xs text-gray-400">
                 Source: {currentPrice.source}
