@@ -12,10 +12,11 @@ import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
 import { SellSignalsPage } from './pages/SellSignalsPage';
 import { AnalysisPage } from './pages/AnalysisPage';
+import { PatternsPage } from './pages/PatternsPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -47,6 +48,10 @@ function App() {
 
   if (currentPage === 'analysis') {
     return <AnalysisPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'patterns') {
+    return <PatternsPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -92,6 +97,14 @@ function App() {
               >
                 <Gauge className="w-4 h-4" />
                 <span className="hidden lg:inline">Analysis</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('patterns')}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-400 rounded-lg transition-colors border border-indigo-700/50 text-sm shrink-0"
+                title="Pattern Recognition"
+              >
+                <CandlestickChart className="w-4 h-4" />
+                <span className="hidden lg:inline">Patterns</span>
               </button>
               <button
                 onClick={() => setCurrentPage('products')}
