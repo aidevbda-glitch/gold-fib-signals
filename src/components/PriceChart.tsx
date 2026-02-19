@@ -163,7 +163,7 @@ export function PriceChart() {
                 stroke="#22c55e"
                 strokeWidth={2}
                 label={{
-                  value: `Live: $${currentPrice.price.toFixed(2)}`,
+                  value: `$${currentPrice.price.toFixed(2)}`,
                   fill: '#22c55e',
                   fontSize: 11,
                   position: 'left',
