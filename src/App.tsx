@@ -222,15 +222,21 @@ function App() {
                 <p>
                   <strong className="text-blue-400">Key Levels:</strong>
                 </p>
-                <ul className="list-disc list-inside space-y-1 text-gray-400">
-                  <li><strong>38.2%</strong> - Shallow retracement, strong trend</li>
-                  <li><strong>50%</strong> - Psychological midpoint</li>
-                  <li><strong>61.8%</strong> - Golden ratio, KEY reversal level</li>
-                  <li><strong>78.6%</strong> - Deep retracement, higher risk</li>
-                </ul>
-                <p className="text-gray-500 text-xs mt-4">
-                  ⚠️ This is for educational purposes only. Not financial advice.
-                </p>
+                <div className="space-y-1 text-gray-400">
+                  <div className="flex"><span className="w-14 shrink-0 font-bold">38.2%</span><span>Shallow retracement, strong trend</span></div>
+                  <div className="flex"><span className="w-14 shrink-0 font-bold">50%</span><span>Psychological midpoint</span></div>
+                  <div className="flex"><span className="w-14 shrink-0 font-bold">61.8%</span><span>Golden ratio, KEY reversal level</span></div>
+                  <div className="flex"><span className="w-14 shrink-0 font-bold">78.6%</span><span>Deep retracement, higher risk</span></div>
+                </div>
+                <div className="flex gap-1.5 text-gray-500 text-xs mt-4">
+                  <span className="shrink-0">⚠️</span>
+                  <span>
+                    This is for educational purposes only.
+                    <span className="hidden sm:inline"> </span>
+                    <br className="sm:hidden" />
+                    Not financial advice.
+                  </span>
+                </div>
               </div>
             </div>
 

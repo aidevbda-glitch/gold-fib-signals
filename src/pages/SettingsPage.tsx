@@ -288,9 +288,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             </div>
             <button
               onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-500 hover:bg-yellow-400 text-black font-medium rounded-lg transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               Add Provider
             </button>
           </div>
@@ -399,17 +399,19 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     provider.isActive ? 'border-green-500/50' : 'border-gray-600'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-medium text-white">{provider.name}</h3>
                         {provider.isActive && (
-                          <span className="px-2 py-0.5 bg-green-900/50 text-green-400 text-xs rounded-full">
+                          <span className="px-2 py-0.5 bg-green-900/50 text-green-400 text-xs rounded-full shrink-0">
                             Active
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-400 mt-1 font-mono">{provider.endpoint}</p>
+                      <p className="text-sm text-gray-400 mt-1 font-mono truncate" title={provider.endpoint}>
+                        {provider.endpoint}
+                      </p>
                       <p className="text-xs text-gray-500 mt-1">
                         API Key: {maskApiKey(provider.apiKey)} • {provider.requestType}
                       </p>
@@ -422,11 +424,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                       )}
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                       <button
                         onClick={() => handleTestProvider(provider.id)}
                         disabled={testingId === provider.id}
-                        className="p-2 text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors"
+                        className="p-1.5 sm:p-2 text-blue-400 hover:bg-blue-900/30 rounded-lg transition-colors"
                         title="Test connection"
                       >
                         {testingId === provider.id ? (
@@ -439,7 +441,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                       {!provider.isActive && (
                         <button
                           onClick={() => handleUpdateProvider(provider.id, { isActive: true })}
-                          className="p-2 text-green-400 hover:bg-green-900/30 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 text-green-400 hover:bg-green-900/30 rounded-lg transition-colors"
                           title="Set as active"
                         >
                           <Check className="w-4 h-4" />
@@ -448,7 +450,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                       
                       <button
                         onClick={() => handleDeleteProvider(provider.id)}
-                        className="p-2 text-red-400 hover:bg-red-900/30 rounded-lg transition-colors"
+                        className="p-1.5 sm:p-2 text-red-400 hover:bg-red-900/30 rounded-lg transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -510,9 +512,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <button
               onClick={handleRecalculateFib}
               disabled={isRecalculating}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-600 text-black font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-600 text-black font-medium rounded-lg transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin' : ''}`} />
               Recalculate Now
             </button>
           </div>
@@ -565,24 +567,35 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           </div>
 
           {/* Auto Recalc on Breakout */}
-          <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-            <div>
-              <p className="font-medium text-white">Auto-recalculate on Breakout</p>
+          <div className="flex items-center justify-between gap-3 p-4 bg-gray-700/30 rounded-lg">
+            <div className="min-w-0">
+              <p className="font-medium text-white text-sm sm:text-base">Auto-recalculate on Breakout</p>
               <p className="text-xs text-gray-400 mt-1">
                 Automatically recalculate when price breaks above swing high or below swing low
               </p>
             </div>
+            {/* Mobile: Icon toggle, Desktop: Slider toggle */}
             <button
               onClick={() => handleUpdateFibSettings({ autoRecalcOnBreakout: !fibSettings?.autoRecalcOnBreakout })}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                fibSettings?.autoRecalcOnBreakout ? 'bg-green-500' : 'bg-gray-600'
+              className={`shrink-0 flex items-center justify-center w-8 h-8 sm:w-10 sm:h-6 rounded-lg sm:rounded-full transition-colors relative ${
+                fibSettings?.autoRecalcOnBreakout 
+                  ? 'bg-green-500 text-white' 
+                  : 'bg-gray-600 text-gray-400'
               }`}
+              title={fibSettings?.autoRecalcOnBreakout ? 'Enabled' : 'Disabled'}
             >
-              <span
-                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                  fibSettings?.autoRecalcOnBreakout ? 'translate-x-7' : 'translate-x-1'
-                }`}
-              />
+              {/* Mobile: Show icon */}
+              <span className="sm:hidden">
+                {fibSettings?.autoRecalcOnBreakout ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <X className="w-4 h-4" />
+                )}
+              </span>
+              {/* Desktop: Slider dot */}
+              <span className={`hidden sm:block absolute w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${
+                fibSettings?.autoRecalcOnBreakout ? 'translate-x-2' : '-translate-x-2'
+              }`} />
             </button>
           </div>
 
@@ -596,12 +609,12 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           {/* Best Practices Info */}
           <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
             <h4 className="text-sm font-medium text-blue-400 mb-2">📚 Best Practices</h4>
-            <ul className="text-xs text-gray-300 space-y-1">
-              <li>• <strong>Weekly repricing</strong> is recommended for position/swing trading gold</li>
-              <li>• <strong>50-day lookback</strong> captures medium-term swings effectively</li>
-              <li>• Fibonacci levels gain strength when multiple timeframes align</li>
-              <li>• Recalculate manually after significant market events</li>
-            </ul>
+            <div className="text-xs text-gray-300 space-y-1.5">
+              <div className="flex gap-2"><span className="shrink-0">•</span><span><strong>Weekly repricing</strong> is recommended for position/swing trading gold</span></div>
+              <div className="flex gap-2"><span className="shrink-0">•</span><span><strong>50-day lookback</strong> captures medium-term swings effectively</span></div>
+              <div className="flex gap-2"><span className="shrink-0">•</span><span>Fibonacci levels gain strength when multiple timeframes align</span></div>
+              <div className="flex gap-2"><span className="shrink-0">•</span><span>Recalculate manually after significant market events</span></div>
+            </div>
           </div>
         </section>
 
@@ -611,9 +624,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           <p className="text-gray-300 text-sm mb-4">
             To use GoldAPI.io, click "Add Provider" above and use these settings:
           </p>
-          <div className="bg-gray-800/50 rounded-lg p-4 font-mono text-sm">
+          <div className="bg-gray-800/50 rounded-lg p-4 font-mono text-sm space-y-1 overflow-hidden">
             <p><span className="text-gray-500">Name:</span> <span className="text-yellow-400">GoldAPI.io</span></p>
-            <p><span className="text-gray-500">Endpoint:</span> <span className="text-blue-400">https://www.goldapi.io/api/:symbol/:currency</span></p>
+            <p className="truncate" title="https://www.goldapi.io/api/:symbol/:currency"><span className="text-gray-500">Endpoint:</span> <span className="text-blue-400">https://www.goldapi.io/api/:symbol/:currency</span></p>
             <p><span className="text-gray-500">Request Type:</span> <span className="text-green-400">GET</span></p>
             <p><span className="text-gray-500">Symbol:</span> <span className="text-white">XAU</span></p>
             <p><span className="text-gray-500">Currency:</span> <span className="text-white">USD</span></p>
