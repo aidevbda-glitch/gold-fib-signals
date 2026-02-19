@@ -18,6 +18,17 @@ export interface EMAResult {
   strength: number; // 0-100
 }
 
+export interface MACrossResult {
+  sma50: number;
+  sma200: number;
+  goldenCross: boolean;      // 50 just crossed above 200
+  deathCross: boolean;       // 50 just crossed below 200
+  trend: 'bullish' | 'bearish' | 'neutral';  // 50 above/below 200
+  distancePercent: number;   // How far apart the MAs are
+  daysUntilCross: number | null;  // Estimated days until cross (if converging)
+  strength: number;          // 0-100 based on separation
+}
+
 export interface MACDResult {
   macdLine: number;
   signalLine: number;
@@ -45,6 +56,7 @@ export interface ATRResult {
 export interface ConfluenceScore {
   total: number; // 0-100
   emaScore: number;
+  maCrossScore: number;
   macdScore: number;
   rsiScore: number;
   fibScore: number;
@@ -56,6 +68,7 @@ export interface ConfluenceScore {
 
 export interface TechnicalAnalysis {
   ema: EMAResult;
+  maCross: MACrossResult;
   macd: MACDResult;
   rsi: RSIResult;
   atr: ATRResult;
@@ -122,6 +135,92 @@ export class TechnicalIndicators {
     const strength = Math.min(100, Math.abs(percentDiff) * 20);
 
     return { ema8, ema34, crossover, trend, strength };
+  }
+
+  /**
+   * Calculate SMA (Simple Moving Average)
+   */
+  static calculateSMA(prices: number[], period: number): number {
+    if (prices.length < period) return prices[prices.length - 1];
+    const slice = prices.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  }
+
+  /**
+   * Analyze 50/200 SMA Golden Cross / Death Cross
+   * 
+   * Golden Cross: 50-day SMA crosses ABOVE 200-day SMA (bullish)
+   * Death Cross: 50-day SMA crosses BELOW 200-day SMA (bearish)
+   * 
+   * These are lagging indicators that confirm medium-to-long term trends.
+   */
+  static analyzeMACross(priceData: PriceData[]): MACrossResult {
+    const closes = priceData.map(d => d.close);
+    const currentPrice = closes[closes.length - 1];
+    
+    // Need at least 200 data points for reliable 200-day SMA
+    if (closes.length < 200) {
+      return {
+        sma50: currentPrice,
+        sma200: currentPrice,
+        goldenCross: false,
+        deathCross: false,
+        trend: 'neutral',
+        distancePercent: 0,
+        daysUntilCross: null,
+        strength: 50,
+      };
+    }
+
+    const sma50 = this.calculateSMA(closes, 50);
+    const sma200 = this.calculateSMA(closes, 200);
+    
+    // Previous SMAs for crossover detection (yesterday)
+    const prevCloses = closes.slice(0, -1);
+    const prevSma50 = this.calculateSMA(prevCloses, 50);
+    const prevSma200 = this.calculateSMA(prevCloses, 200);
+
+    // Detect crosses
+    const goldenCross = prevSma50 <= prevSma200 && sma50 > sma200;
+    const deathCross = prevSma50 >= prevSma200 && sma50 < sma200;
+
+    // Current trend
+    let trend: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+    if (sma50 > sma200) trend = 'bullish';
+    else if (sma50 < sma200) trend = 'bearish';
+
+    // Distance between MAs
+    const distancePercent = ((sma50 - sma200) / sma200) * 100;
+
+    // Estimate days until cross (if converging)
+    let daysUntilCross: number | null = null;
+    const prevDistance = prevSma50 - prevSma200;
+    const currentDistance = sma50 - sma200;
+    const dailyConvergence = Math.abs(currentDistance) - Math.abs(prevDistance);
+    
+    // If MAs are converging (distance decreasing)
+    if (dailyConvergence < 0 && Math.abs(currentDistance) > 0) {
+      const rate = Math.abs(dailyConvergence);
+      if (rate > 0) {
+        daysUntilCross = Math.round(Math.abs(currentDistance) / rate);
+        // Cap at reasonable estimate
+        if (daysUntilCross > 180) daysUntilCross = null;
+      }
+    }
+
+    // Strength based on separation (wider = stronger trend)
+    const strength = Math.min(100, Math.abs(distancePercent) * 10);
+
+    return {
+      sma50,
+      sma200,
+      goldenCross,
+      deathCross,
+      trend,
+      distancePercent,
+      daysUntilCross,
+      strength,
+    };
   }
 
   /**
@@ -297,6 +396,7 @@ export class TechnicalIndicators {
    */
   static calculateConfluence(
     ema: EMAResult,
+    maCross: MACrossResult,
     macd: MACDResult,
     rsi: RSIResult,
     fibScore: number = 0,
@@ -305,25 +405,51 @@ export class TechnicalIndicators {
     const factors: string[] = [];
     let totalScore = 50; // Start neutral
 
-    // EMA Score (max 20 points)
+    // EMA Score (max 20 points) - Short-term trend
     let emaScore = 0;
     if (ema.trend === 'up') {
-      emaScore = Math.min(20, ema.strength / 5);
-      factors.push(`EMA: Bullish trend (8 > 34)`);
+      emaScore = Math.min(15, ema.strength / 5);
+      factors.push(`EMA (8/34): Bullish short-term trend`);
       totalScore += emaScore;
     } else if (ema.trend === 'down') {
-      emaScore = -Math.min(20, ema.strength / 5);
-      factors.push(`EMA: Bearish trend (8 < 34)`);
+      emaScore = -Math.min(15, ema.strength / 5);
+      factors.push(`EMA (8/34): Bearish short-term trend`);
       totalScore += emaScore;
     }
     if (ema.crossover === 'bullish') {
-      emaScore += 10;
-      totalScore += 10;
+      emaScore += 8;
+      totalScore += 8;
       factors.push(`EMA: Fresh bullish crossover! 🔥`);
     } else if (ema.crossover === 'bearish') {
-      emaScore -= 10;
-      totalScore -= 10;
+      emaScore -= 8;
+      totalScore -= 8;
       factors.push(`EMA: Fresh bearish crossover! ⚠️`);
+    }
+
+    // MA Cross Score (max 15 points) - Medium-term trend (Golden/Death Cross)
+    let maCrossScore = 0;
+    if (maCross.goldenCross) {
+      maCrossScore = 15;
+      totalScore += 15;
+      factors.push(`🌟 GOLDEN CROSS: 50-day crossed above 200-day (major bullish signal)`);
+    } else if (maCross.deathCross) {
+      maCrossScore = -15;
+      totalScore -= 15;
+      factors.push(`💀 DEATH CROSS: 50-day crossed below 200-day (major bearish signal)`);
+    } else if (maCross.trend === 'bullish') {
+      maCrossScore = Math.min(10, maCross.strength / 10);
+      totalScore += maCrossScore;
+      factors.push(`MA (50/200): Bullish medium-term trend (${maCross.distancePercent.toFixed(1)}% above)`);
+    } else if (maCross.trend === 'bearish') {
+      maCrossScore = -Math.min(10, maCross.strength / 10);
+      totalScore += maCrossScore;
+      factors.push(`MA (50/200): Bearish medium-term trend (${Math.abs(maCross.distancePercent).toFixed(1)}% below)`);
+    }
+    
+    // Add convergence warning if MAs are about to cross
+    if (maCross.daysUntilCross !== null && maCross.daysUntilCross <= 30) {
+      const crossType = maCross.trend === 'bearish' ? 'Golden Cross' : 'Death Cross';
+      factors.push(`⏳ Potential ${crossType} in ~${maCross.daysUntilCross} days (MAs converging)`);
     }
 
     // MACD Score (max 20 points)
@@ -382,22 +508,24 @@ export class TechnicalIndicators {
     else if (totalScore >= 25) recommendation = 'SELL';
     else recommendation = 'STRONG_SELL';
 
-    // Determine confidence
+    // Determine confidence (include MA Cross in alignment)
     const alignedIndicators = [
       ema.trend === 'up' ? 1 : ema.trend === 'down' ? -1 : 0,
+      maCross.trend === 'bullish' ? 1 : maCross.trend === 'bearish' ? -1 : 0,
       macd.trend === 'bullish' ? 1 : macd.trend === 'bearish' ? -1 : 0,
       rsi.buyZone ? 1 : rsi.sellZone ? -1 : 0,
     ];
     const alignment = Math.abs(alignedIndicators.reduce((a, b) => a + b, 0));
     
     let confidence: 'high' | 'medium' | 'low';
-    if (alignment >= 3) confidence = 'high';
+    if (alignment >= 4) confidence = 'high';
     else if (alignment >= 2) confidence = 'medium';
     else confidence = 'low';
 
     return {
       total: totalScore,
       emaScore: Math.abs(emaScore),
+      maCrossScore: Math.abs(maCrossScore),
       macdScore: Math.abs(macdScore),
       rsiScore: Math.abs(rsiScore),
       fibScore,
@@ -413,13 +541,15 @@ export class TechnicalIndicators {
    */
   static analyze(priceData: PriceData[], fibScore: number = 0): TechnicalAnalysis {
     const ema = this.analyzeEMA(priceData);
+    const maCross = this.analyzeMACross(priceData);
     const macd = this.analyzeMACD(priceData);
     const rsi = this.analyzeRSI(priceData);
     const atr = this.analyzeATR(priceData);
-    const confluence = this.calculateConfluence(ema, macd, rsi, fibScore, 0);
+    const confluence = this.calculateConfluence(ema, maCross, macd, rsi, fibScore, 0);
 
     return {
       ema,
+      maCross,
       macd,
       rsi,
       atr,

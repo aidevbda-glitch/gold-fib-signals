@@ -112,12 +112,17 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
                     title="EMA"
                   />
                   <div 
+                    className="h-full bg-yellow-500" 
+                    style={{ width: `${analysis.confluence.maCrossScore}%` }}
+                    title="MA Cross"
+                  />
+                  <div 
                     className="h-full bg-green-500" 
                     style={{ width: `${analysis.confluence.macdScore}%` }}
                     title="MACD"
                   />
                   <div 
-                    className="h-full bg-yellow-500" 
+                    className="h-full bg-orange-500" 
                     style={{ width: `${analysis.confluence.rsiScore}%` }}
                     title="RSI"
                   />
@@ -127,10 +132,11 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
                     title="Fibonacci"
                   />
                 </div>
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <div className="flex flex-wrap justify-between gap-1 text-xs text-gray-400 mt-1">
                   <span>🔵 EMA: {analysis.confluence.emaScore}</span>
+                  <span>🟡 MA: {analysis.confluence.maCrossScore}</span>
                   <span>🟢 MACD: {analysis.confluence.macdScore}</span>
-                  <span>🟡 RSI: {analysis.confluence.rsiScore}</span>
+                  <span>🟠 RSI: {analysis.confluence.rsiScore}</span>
                   <span>🟣 Fib: {analysis.confluence.fibScore}</span>
                 </div>
               </div>
@@ -275,6 +281,70 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
                     <p className="text-xs text-gray-300">
                       <strong>EMA Crossover:</strong> When the fast EMA(8) crosses above the slow EMA(34), 
                       it signals bullish momentum. The opposite indicates bearish momentum.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Golden/Death Cross Card */}
+              <div className="bg-gray-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-5 h-5 text-yellow-400" />
+                    <h3 className="text-lg font-bold text-white">Golden / Death Cross</h3>
+                  </div>
+                  {analysis.maCross.goldenCross ? (
+                    <span className="px-2 py-1 bg-green-500 text-white text-xs font-bold rounded">🌟 GOLDEN</span>
+                  ) : analysis.maCross.deathCross ? (
+                    <span className="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">💀 DEATH</span>
+                  ) : (
+                    getTrendIcon(analysis.maCross.trend)
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-gray-700/50 rounded-lg p-3">
+                    <span className="text-xs text-gray-400">SMA(50)</span>
+                    <p className="text-lg font-bold text-yellow-400">${analysis.maCross.sma50.toFixed(2)}</p>
+                  </div>
+                  <div className="bg-gray-700/50 rounded-lg p-3">
+                    <span className="text-xs text-gray-400">SMA(200)</span>
+                    <p className="text-lg font-bold text-yellow-300">${analysis.maCross.sma200.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Trend:</span>
+                    <span className={analysis.maCross.trend === 'bullish' ? 'text-green-400' : analysis.maCross.trend === 'bearish' ? 'text-red-400' : 'text-gray-400'}>
+                      {analysis.maCross.trend.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Distance:</span>
+                    <span className={analysis.maCross.distancePercent >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      {analysis.maCross.distancePercent >= 0 ? '+' : ''}{analysis.maCross.distancePercent.toFixed(2)}%
+                    </span>
+                  </div>
+                  {analysis.maCross.daysUntilCross !== null && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Est. Cross:</span>
+                      <span className="text-yellow-400">~{analysis.maCross.daysUntilCross} days</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Strength:</span>
+                    <span className="text-white">{analysis.maCross.strength.toFixed(0)}%</span>
+                  </div>
+                </div>
+
+                {/* Educational Note */}
+                <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-4 h-4 text-yellow-400 mt-0.5" />
+                    <p className="text-xs text-gray-300">
+                      <strong>Golden Cross:</strong> 50-day SMA crosses above 200-day SMA — bullish long-term signal.
+                      <strong className="ml-1">Death Cross:</strong> 50-day crosses below — bearish. These are <em>lagging</em> indicators that confirm trends.
                     </p>
                   </div>
                 </div>
