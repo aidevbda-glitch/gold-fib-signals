@@ -57,7 +57,7 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gradient-to-r from-purple-900/50 to-gray-900 sticky top-0 z-50">
+      <header className="border-b border-gray-800 bg-gradient-to-r from-purple-900/[0.65] to-gray-900 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
