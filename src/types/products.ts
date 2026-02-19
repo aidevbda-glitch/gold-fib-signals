@@ -45,10 +45,10 @@ export interface TimeframeOption {
 }
 
 export const TIMEFRAMES: TimeframeOption[] = [
-  { label: '1 Week', value: '1w', days: 7 },
-  { label: '1 Month', value: '1m', days: 30 },
-  { label: '3 Months', value: '3m', days: 90 },
-  { label: '6 Months', value: '6m', days: 180 },
+  { label: '1 Week', value: '5d', days: 7 },
+  { label: '1 Month', value: '1mo', days: 30 },
+  { label: '3 Months', value: '3mo', days: 90 },
+  { label: '6 Months', value: '6mo', days: 180 },
   { label: '1 Year', value: '1y', days: 365 },
   { label: '2 Years', value: '2y', days: 730 },
   { label: '3 Years', value: '3y', days: 1095 },

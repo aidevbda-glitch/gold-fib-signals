@@ -73,7 +73,7 @@ export class GoldPriceService {
       // Calculate days from range
       const rangeToDays: Record<string, number> = {
         '1d': 1, '5d': 5, '1mo': 30, '3mo': 90,
-        '6mo': 180, '1y': 365, '2y': 730, '5y': 1825
+        '6mo': 180, '1y': 365, '2y': 730, '3y': 1095, '5y': 1825
       };
       const days = rangeToDays[range] || 365;
 
