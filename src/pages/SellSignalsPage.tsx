@@ -208,7 +208,7 @@ export function SellSignalsPage({ onBack }: SellSignalsPageProps) {
 
         {/* Educational Note */}
         <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-          <h4 className="font-medium text-white mb-2">📚 Understanding ASK Price</h4>
+          <h4 className="font-medium text-white mb-2 flex items-center gap-1.5"><span>📚</span><span>Understanding ASK Price</span></h4>
           <p className="text-sm text-gray-400">
             The <strong className="text-red-400">ASK price</strong> is what sellers are asking for gold.
             When you want to SELL gold, you'll receive the BID price, but the ASK shows current seller supply.

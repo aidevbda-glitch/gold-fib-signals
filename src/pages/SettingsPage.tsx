@@ -463,8 +463,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
           )}
 
           <div className="mt-4 p-3 bg-gray-700/30 rounded-lg">
-            <p className="text-xs text-gray-500">
-              💡 <strong>Tip:</strong> If no provider is active, the app uses Yahoo Finance (free) as the default data source.
+            <p className="text-xs text-gray-500 flex items-start gap-1.5">
+              <span className="shrink-0">💡</span>
+              <span><strong>Tip:</strong> If no provider is active, the app uses Yahoo Finance (free) as the default data source.</span>
             </p>
           </div>
         </section>
@@ -608,7 +609,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
           {/* Best Practices Info */}
           <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-400 mb-2">📚 Best Practices</h4>
+            <h4 className="text-sm font-medium text-blue-400 mb-2 flex items-center gap-1.5"><span>📚</span><span>Best Practices</span></h4>
             <div className="text-xs text-gray-300 space-y-1.5">
               <div className="flex gap-2"><span className="shrink-0">•</span><span><strong>Weekly repricing</strong> is recommended for position/swing trading gold</span></div>
               <div className="flex gap-2"><span className="shrink-0">•</span><span><strong>50-day lookback</strong> captures medium-term swings effectively</span></div>

@@ -137,7 +137,7 @@ function App() {
       {error && (
         <div className="bg-red-900/50 border-b border-red-800 px-4 py-3">
           <div className="max-w-7xl mx-auto">
-            <p className="text-red-200 text-sm">⚠️ {error}</p>
+            <p className="text-red-200 text-sm flex items-start gap-1.5"><span className="shrink-0">⚠️</span><span>{error}</span></p>
           </div>
         </div>
       )}
@@ -234,7 +234,7 @@ function App() {
             
             {/* Info Card */}
             <div className="bg-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-white mb-3">📚 How It Works</h3>
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-1.5"><span>📚</span><span>How It Works</span></h3>
               <div className="space-y-3 text-sm text-gray-300">
                 <p>
                   This app analyzes Gold (XAU/USD) prices using <strong className="text-yellow-400">Fibonacci retracement</strong> levels 
@@ -263,7 +263,7 @@ function App() {
 
             {/* Quick Links */}
             <div className="bg-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-bold text-white mb-3">🔗 Explore More</h3>
+              <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-1.5"><span>🔗</span><span>Explore More</span></h3>
               <button
                 onClick={() => setCurrentPage('products')}
                 className="w-full flex items-center gap-3 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-left"

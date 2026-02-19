@@ -625,7 +625,7 @@ function PatternEducationCard({
 
           {/* Trading Tips */}
           <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
-            <h5 className="text-xs font-medium text-blue-400 mb-1">💡 Trading Tip</h5>
+            <h5 className="text-xs font-medium text-blue-400 mb-1 flex items-center gap-1"><span>💡</span><span>Trading Tip</span></h5>
             <p className="text-xs text-gray-400">
               {pattern.signal === 'bullish' 
                 ? `Look for this pattern near support levels or after extended downtrends for higher probability setups. Wait for confirmation before entering.`

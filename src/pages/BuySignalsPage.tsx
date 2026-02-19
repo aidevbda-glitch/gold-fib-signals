@@ -208,7 +208,7 @@ export function BuySignalsPage({ onBack }: BuySignalsPageProps) {
 
         {/* Educational Note */}
         <div className="mt-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-          <h4 className="font-medium text-white mb-2">📚 Understanding BID Price</h4>
+          <h4 className="font-medium text-white mb-2 flex items-center gap-1.5"><span>📚</span><span>Understanding BID Price</span></h4>
           <p className="text-sm text-gray-400">
             The <strong className="text-green-400">BID price</strong> is what buyers are willing to pay for gold.
             When you want to BUY gold, you'll pay the ASK price, but the BID shows current buyer demand.

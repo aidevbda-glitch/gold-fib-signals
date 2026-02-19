@@ -186,7 +186,7 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="bg-gray-800/50 rounded-lg p-4">
-                  <h4 className="text-yellow-400 font-medium mb-2">🎯 Fibonacci Signals</h4>
+                  <h4 className="text-yellow-400 font-medium mb-2 flex items-center gap-1.5"><span>🎯</span><span>Fibonacci Signals</span></h4>
                   <ul className="text-sm text-gray-400 space-y-1">
                     <li className="flex gap-2"><span className="shrink-0">•</span><span>Counter-trend: looks for <strong className="text-white">reversals</strong> at key levels</span></li>
                     <li className="flex gap-2"><span className="shrink-0">•</span><span>Short-term focus (hours to days)</span></li>
@@ -194,7 +194,7 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
                   </ul>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-4">
-                  <h4 className="text-purple-400 font-medium mb-2">📊 Technical Analysis</h4>
+                  <h4 className="text-purple-400 font-medium mb-2 flex items-center gap-1.5"><span>📊</span><span>Technical Analysis</span></h4>
                   <ul className="text-sm text-gray-400 space-y-1">
                     <li className="flex gap-2"><span className="shrink-0">•</span><span>Trend-following: shows current <strong className="text-white">momentum</strong></span></li>
                     <li className="flex gap-2"><span className="shrink-0">•</span><span>Medium-term focus (days to weeks)</span></li>
@@ -227,8 +227,9 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
                 </div>
               </div>
 
-              <p className="text-gray-500 text-xs mt-4">
-                💡 <strong>Pro tip:</strong> Conflicting signals often indicate a market at an inflection point. Consider waiting for confirmation or reducing position size.
+              <p className="text-gray-500 text-xs mt-4 flex items-start gap-1.5">
+                <span className="shrink-0">💡</span>
+                <span><strong>Pro tip:</strong> Conflicting signals often indicate a market at an inflection point. Consider waiting for confirmation or reducing position size.</span>
               </p>
             </div>
 
@@ -591,10 +592,11 @@ export function AnalysisPage({ onBack }: AnalysisPageProps) {
               </div>
 
               <div className="mt-4 p-4 bg-purple-900/20 border border-purple-700/30 rounded-lg">
-                <p className="text-sm text-gray-300">
-                  <strong className="text-purple-400">💡 Pro Tip:</strong> High confidence signals occur when 
+                <p className="text-sm text-gray-300 flex items-start gap-1.5">
+                  <span className="shrink-0">💡</span>
+                  <span><strong className="text-purple-400">Pro Tip:</strong> High confidence signals occur when 
                   multiple indicators align in the same direction. A "STRONG BUY" with "HIGH" confidence 
-                  means EMA, MACD, RSI, and Fibonacci all support the bullish case.
+                  means EMA, MACD, RSI, and Fibonacci all support the bullish case.</span>
                 </p>
               </div>
             </div>
