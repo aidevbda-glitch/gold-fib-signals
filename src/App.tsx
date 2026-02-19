@@ -209,9 +209,17 @@ function App() {
               )}
 
               {chartView === 'intraday' && (
-                <p className="text-xs text-gray-500">
-                  📊 Real-time bid/ask data from Swissquote • Updated every minute
-                </p>
+                <div className="text-xs text-gray-500 flex items-start gap-1.5">
+                  <span className="shrink-0">📊</span>
+                  <div>
+                    Real-time bid/ask data from Swissquote
+                    <span className="block sm:inline">
+                      <span className="hidden sm:inline"> • </span>
+                      <span className="sm:hidden">• </span>
+                      Updated every minute
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
 

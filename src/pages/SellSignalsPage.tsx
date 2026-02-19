@@ -80,8 +80,12 @@ export function SellSignalsPage({ onBack }: SellSignalsPageProps) {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* Current Ask Price Card */}
         <div className="bg-gradient-to-br from-red-900/40 to-red-800/20 border border-red-500/30 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-red-400">Current ASK Price (Sell at)</h2>
+          <div className="flex flex-wrap items-start sm:items-center justify-between gap-1 mb-4">
+            <h2 className="text-lg font-bold text-red-400">
+              Current ASK Price
+              <br className="sm:hidden" />
+              <span className="text-base sm:text-lg">(Sell at)</span>
+            </h2>
             {currentPrice && (
               <span className="text-xs text-gray-400">
                 Source: {currentPrice.source}

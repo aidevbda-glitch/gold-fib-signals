@@ -80,8 +80,12 @@ export function BuySignalsPage({ onBack }: BuySignalsPageProps) {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* Current Bid Price Card */}
         <div className="bg-gradient-to-br from-green-900/40 to-green-800/20 border border-green-500/30 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-green-400">Current BID Price <span className="block sm:inline">(Buy at)</span></h2>
+          <div className="flex flex-wrap items-start sm:items-center justify-between gap-1 mb-4">
+            <h2 className="text-lg font-bold text-green-400">
+              Current BID Price
+              <br className="sm:hidden" />
+              <span className="text-base sm:text-lg">(Buy at)</span>
+            </h2>
             {currentPrice && (
               <span className="text-xs text-gray-400">
                 Source: {currentPrice.source}
