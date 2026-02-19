@@ -103,7 +103,7 @@ export function BuySignalsPage({ onBack }: BuySignalsPageProps) {
                   <div className="bg-gray-800/50 rounded-lg p-4">
                     <p className="text-sm text-gray-300">
                       <span className="text-green-400 font-medium">Nearest Fib Level:</span> {bidAnalysis.nearestLevel}
-                      <span className="text-gray-500 ml-2">(${bidAnalysis.distance.toFixed(2)} away)</span>
+                      <span className="block sm:inline text-gray-500 sm:ml-2">(${bidAnalysis.distance.toFixed(2)} away)</span>
                     </p>
                     <p className="text-sm text-gray-400 mt-2">{bidAnalysis.recommendation}</p>
                   </div>

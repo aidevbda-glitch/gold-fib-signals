@@ -104,7 +104,7 @@ function App() {
                 title="Pattern Recognition"
               >
                 <CandlestickChart className="w-4 h-4" />
-                <span className="hidden lg:inline">Patterns</span>
+                <span className="hidden min-[480px]:inline">Patterns</span>
               </button>
               <button
                 onClick={() => setCurrentPage('products')}

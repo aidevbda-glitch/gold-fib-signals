@@ -103,7 +103,7 @@ export function SellSignalsPage({ onBack }: SellSignalsPageProps) {
                   <div className="bg-gray-800/50 rounded-lg p-4">
                     <p className="text-sm text-gray-300">
                       <span className="text-red-400 font-medium">Nearest Fib Level:</span> {askAnalysis.nearestLevel}
-                      <span className="text-gray-500 ml-2">(${askAnalysis.distance.toFixed(2)} away)</span>
+                      <span className="block sm:inline text-gray-500 sm:ml-2">(${askAnalysis.distance.toFixed(2)} away)</span>
                     </p>
                     <p className="text-sm text-gray-400 mt-2">{askAnalysis.recommendation}</p>
                   </div>
