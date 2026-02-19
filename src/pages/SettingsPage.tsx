@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Check, X, RefreshCw, TestTube, Save, Settings2, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Check, X, RefreshCw, TestTube, Save, Settings2, TrendingUp, Megaphone } from 'lucide-react';
 import type { ApiProvider, RefreshSettings } from '../types/settings';
 import { REFRESH_INTERVALS } from '../types/settings';
 
@@ -11,6 +11,17 @@ interface FibonacciSettings {
   lastRecalculated: number | null;
   swingHigh: number | null;
   swingLow: number | null;
+}
+
+interface AdSettings {
+  adsEnabled: boolean;
+  adsensePublisherId: string;
+  placements: {
+    header: { enabled: boolean; slot: string };
+    sidebar: { enabled: boolean; slot: string };
+    content: { enabled: boolean; slot: string };
+    footer: { enabled: boolean; slot: string };
+  };
 }
 
 const REPRICING_MODES = {
@@ -37,6 +48,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [providers, setProviders] = useState<ApiProvider[]>([]);
   const [refreshSettings, setRefreshSettings] = useState<RefreshSettings | null>(null);
   const [fibSettings, setFibSettings] = useState<FibonacciSettings | null>(null);
+  const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [_editingId, setEditingId] = useState<string | null>(null);
@@ -62,10 +74,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const fetchSettings = async () => {
     try {
       setIsLoading(true);
-      const [providersRes, refreshRes, fibRes] = await Promise.all([
+      const [providersRes, refreshRes, fibRes, adRes] = await Promise.all([
         fetch(`${API_BASE}/settings/providers`),
         fetch(`${API_BASE}/settings/refresh`),
         fetch(`${API_BASE}/settings/fibonacci`),
+        fetch(`${API_BASE}/ads/settings`),
       ]);
 
       if (providersRes.ok) {
@@ -81,6 +94,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       if (fibRes.ok) {
         const data = await fibRes.json();
         setFibSettings(data.data);
+      }
+
+      if (adRes.ok) {
+        const data = await adRes.json();
+        setAdSettings(data.data);
       }
     } catch (err) {
       setError('Failed to load settings');
@@ -226,6 +244,23 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       setError('Failed to trigger recalculation');
     } finally {
       setIsRecalculating(false);
+    }
+  };
+
+  const handleUpdateAdSettings = async (updates: Partial<AdSettings>) => {
+    try {
+      const response = await fetch(`${API_BASE}/ads/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAdSettings(data.data);
+      }
+    } catch (err) {
+      setError('Failed to update ad settings');
     }
   };
 
@@ -616,6 +651,202 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
               <div className="flex gap-2"><span className="shrink-0">•</span><span>Fibonacci levels gain strength when multiple timeframes align</span></div>
               <div className="flex gap-2"><span className="shrink-0">•</span><span>Recalculate manually after significant market events</span></div>
             </div>
+          </div>
+        </section>
+
+        {/* Ad Settings */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-orange-400" />
+            Advertisement Settings
+          </h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Configure Google AdSense integration and ad placements throughout the app.
+          </p>
+
+          {/* Master Toggle */}
+          <div className="flex items-center justify-between gap-3 p-4 bg-gray-700/30 rounded-lg mb-4">
+            <div className="min-w-0">
+              <p className="font-medium text-white">Enable Advertisements</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Show ads throughout the app to generate revenue
+              </p>
+            </div>
+            <button
+              onClick={() => handleUpdateAdSettings({ adsEnabled: !adSettings?.adsEnabled })}
+              className={`shrink-0 flex items-center justify-center w-10 h-6 rounded-full transition-colors relative ${
+                adSettings?.adsEnabled ? 'bg-green-500' : 'bg-gray-600'
+              }`}
+            >
+              <span className={`absolute w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${
+                adSettings?.adsEnabled ? 'translate-x-2' : '-translate-x-2'
+              }`} />
+            </button>
+          </div>
+
+          {/* AdSense Publisher ID */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Google AdSense Publisher ID
+            </label>
+            <input
+              type="text"
+              value={adSettings?.adsensePublisherId || ''}
+              onChange={(e) => handleUpdateAdSettings({ adsensePublisherId: e.target.value })}
+              placeholder="ca-pub-XXXXXXXXXXXXXXXX"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+            />
+          </div>
+
+          {/* Ad Placements */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-white">Ad Placements</h3>
+            
+            {/* Header Ad */}
+            <div className="p-3 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">Header Banner</span>
+                <button
+                  onClick={() => handleUpdateAdSettings({ 
+                    placements: { 
+                      ...adSettings?.placements, 
+                      header: { ...adSettings?.placements?.header, enabled: !adSettings?.placements?.header?.enabled } 
+                    } 
+                  } as Partial<AdSettings>)}
+                  className={`w-8 h-5 rounded-full transition-colors relative ${
+                    adSettings?.placements?.header?.enabled ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute w-3 h-3 bg-white rounded-full top-1 transition-transform ${
+                    adSettings?.placements?.header?.enabled ? 'translate-x-4' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={adSettings?.placements?.header?.slot || ''}
+                onChange={(e) => handleUpdateAdSettings({ 
+                  placements: { 
+                    ...adSettings?.placements, 
+                    header: { ...adSettings?.placements?.header, slot: e.target.value } 
+                  } 
+                } as Partial<AdSettings>)}
+                placeholder="Ad slot ID"
+                className="w-full bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {/* Sidebar Ad */}
+            <div className="p-3 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">Sidebar Ad</span>
+                <button
+                  onClick={() => handleUpdateAdSettings({ 
+                    placements: { 
+                      ...adSettings?.placements, 
+                      sidebar: { ...adSettings?.placements?.sidebar, enabled: !adSettings?.placements?.sidebar?.enabled } 
+                    } 
+                  } as Partial<AdSettings>)}
+                  className={`w-8 h-5 rounded-full transition-colors relative ${
+                    adSettings?.placements?.sidebar?.enabled ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute w-3 h-3 bg-white rounded-full top-1 transition-transform ${
+                    adSettings?.placements?.sidebar?.enabled ? 'translate-x-4' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={adSettings?.placements?.sidebar?.slot || ''}
+                onChange={(e) => handleUpdateAdSettings({ 
+                  placements: { 
+                    ...adSettings?.placements, 
+                    sidebar: { ...adSettings?.placements?.sidebar, slot: e.target.value } 
+                  } 
+                } as Partial<AdSettings>)}
+                placeholder="Ad slot ID"
+                className="w-full bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {/* Content Ad */}
+            <div className="p-3 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">Between Content</span>
+                <button
+                  onClick={() => handleUpdateAdSettings({ 
+                    placements: { 
+                      ...adSettings?.placements, 
+                      content: { ...adSettings?.placements?.content, enabled: !adSettings?.placements?.content?.enabled } 
+                    } 
+                  } as Partial<AdSettings>)}
+                  className={`w-8 h-5 rounded-full transition-colors relative ${
+                    adSettings?.placements?.content?.enabled ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute w-3 h-3 bg-white rounded-full top-1 transition-transform ${
+                    adSettings?.placements?.content?.enabled ? 'translate-x-4' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={adSettings?.placements?.content?.slot || ''}
+                onChange={(e) => handleUpdateAdSettings({ 
+                  placements: { 
+                    ...adSettings?.placements, 
+                    content: { ...adSettings?.placements?.content, slot: e.target.value } 
+                  } 
+                } as Partial<AdSettings>)}
+                placeholder="Ad slot ID"
+                className="w-full bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {/* Footer Ad */}
+            <div className="p-3 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">Footer Banner</span>
+                <button
+                  onClick={() => handleUpdateAdSettings({ 
+                    placements: { 
+                      ...adSettings?.placements, 
+                      footer: { ...adSettings?.placements?.footer, enabled: !adSettings?.placements?.footer?.enabled } 
+                    } 
+                  } as Partial<AdSettings>)}
+                  className={`w-8 h-5 rounded-full transition-colors relative ${
+                    adSettings?.placements?.footer?.enabled ? 'bg-green-500' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`absolute w-3 h-3 bg-white rounded-full top-1 transition-transform ${
+                    adSettings?.placements?.footer?.enabled ? 'translate-x-4' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={adSettings?.placements?.footer?.slot || ''}
+                onChange={(e) => handleUpdateAdSettings({ 
+                  placements: { 
+                    ...adSettings?.placements, 
+                    footer: { ...adSettings?.placements?.footer, slot: e.target.value } 
+                  } 
+                } as Partial<AdSettings>)}
+                placeholder="Ad slot ID"
+                className="w-full bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 bg-orange-900/20 border border-orange-700/30 rounded-lg">
+            <p className="text-xs text-orange-300 flex items-start gap-1.5">
+              <span className="shrink-0">💡</span>
+              <span>
+                To use Google AdSense, create an account at <a href="https://www.google.com/adsense" target="_blank" rel="noopener noreferrer" className="underline">google.com/adsense</a>, 
+                add your site, and copy the Publisher ID and Ad Slot IDs here.
+              </span>
+            </p>
           </div>
         </section>
 

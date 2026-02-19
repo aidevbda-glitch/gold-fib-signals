@@ -13,10 +13,11 @@ import { BuySignalsPage } from './pages/BuySignalsPage';
 import { SellSignalsPage } from './pages/SellSignalsPage';
 import { AnalysisPage } from './pages/AnalysisPage';
 import { PatternsPage } from './pages/PatternsPage';
+import { DonationPage } from './pages/DonationPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart, Heart } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -52,6 +53,10 @@ function App() {
 
   if (currentPage === 'patterns') {
     return <PatternsPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'donate') {
+    return <DonationPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -112,6 +117,13 @@ function App() {
               >
                 <Layers className="w-4 h-4" />
                 <span className="hidden md:inline">Products</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('donate')}
+                className="p-1.5 sm:p-2 bg-pink-900/50 hover:bg-pink-800/50 text-pink-400 rounded-lg transition-colors shrink-0 border border-pink-700/50"
+                title="Support Us"
+              >
+                <Heart className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setCurrentPage('settings')}

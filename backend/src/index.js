@@ -30,6 +30,19 @@ import {
   setFibonacciSettings,
   shouldRecalculateFibonacci
 } from './settingsService.js';
+import {
+  recordDonation,
+  getDonationStats,
+  getRecentDonations,
+  getTopDonors,
+  getDonationGoal,
+  setDonationGoal
+} from './donationService.js';
+import {
+  getAdSettings,
+  updateAdSettings,
+  toggleAds
+} from './adService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -935,6 +948,161 @@ function calculateMACD(data) {
   
   return { line, signal, histogram };
 }
+
+// ==================== DONATION ENDPOINTS ====================
+
+/**
+ * GET /api/donations/stats
+ * Get donation statistics
+ */
+app.get('/api/donations/stats', (req, res) => {
+  try {
+    const stats = getDonationStats();
+    res.json({ data: stats });
+  } catch (error) {
+    console.error('Error fetching donation stats:', error);
+    res.status(500).json({ error: 'Failed to fetch donation statistics' });
+  }
+});
+
+/**
+ * GET /api/donations/recent
+ * Get recent donations for donor wall
+ */
+app.get('/api/donations/recent', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const donations = getRecentDonations(limit);
+    res.json({ data: donations });
+  } catch (error) {
+    console.error('Error fetching recent donations:', error);
+    res.status(500).json({ error: 'Failed to fetch recent donations' });
+  }
+});
+
+/**
+ * GET /api/donations/top
+ * Get top donors
+ */
+app.get('/api/donations/top', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const donors = getTopDonors(limit);
+    res.json({ data: donors });
+  } catch (error) {
+    console.error('Error fetching top donors:', error);
+    res.status(500).json({ error: 'Failed to fetch top donors' });
+  }
+});
+
+/**
+ * GET /api/donations/goal
+ * Get donation goal progress
+ */
+app.get('/api/donations/goal', (req, res) => {
+  try {
+    const goal = getDonationGoal();
+    res.json({ data: goal });
+  } catch (error) {
+    console.error('Error fetching donation goal:', error);
+    res.status(500).json({ error: 'Failed to fetch donation goal' });
+  }
+});
+
+/**
+ * PUT /api/donations/goal
+ * Set donation goal
+ */
+app.put('/api/donations/goal', (req, res) => {
+  try {
+    const { target, description } = req.body;
+    if (!target || target <= 0) {
+      return res.status(400).json({ error: 'Invalid target amount' });
+    }
+    setDonationGoal(target, description || 'Server costs');
+    const goal = getDonationGoal();
+    res.json({ data: goal });
+  } catch (error) {
+    console.error('Error setting donation goal:', error);
+    res.status(500).json({ error: 'Failed to set donation goal' });
+  }
+});
+
+/**
+ * POST /api/donations
+ * Record a new donation (called from payment webhook)
+ */
+app.post('/api/donations', (req, res) => {
+  try {
+    const { amount, currency, donorName, donorEmail, message, paymentProvider, paymentId, isAnonymous } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid donation amount' });
+    }
+    
+    const donation = recordDonation({
+      amount,
+      currency,
+      donorName,
+      donorEmail,
+      message,
+      paymentProvider,
+      paymentId,
+      isAnonymous
+    });
+    
+    res.json({ data: donation });
+  } catch (error) {
+    console.error('Error recording donation:', error);
+    res.status(500).json({ error: 'Failed to record donation' });
+  }
+});
+
+// ==================== AD SETTINGS ENDPOINTS ====================
+
+/**
+ * GET /api/ads/settings
+ * Get ad settings
+ */
+app.get('/api/ads/settings', (req, res) => {
+  try {
+    const settings = getAdSettings();
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error fetching ad settings:', error);
+    res.status(500).json({ error: 'Failed to fetch ad settings' });
+  }
+});
+
+/**
+ * PUT /api/ads/settings
+ * Update ad settings
+ */
+app.put('/api/ads/settings', (req, res) => {
+  try {
+    const { adsEnabled, adsensePublisherId, placements } = req.body;
+    const settings = updateAdSettings({ adsEnabled, adsensePublisherId, placements });
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error updating ad settings:', error);
+    res.status(500).json({ error: 'Failed to update ad settings' });
+  }
+});
+
+/**
+ * POST /api/ads/toggle
+ * Toggle ads on/off
+ */
+app.post('/api/ads/toggle', (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const settings = toggleAds(enabled);
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error toggling ads:', error);
+    res.status(500).json({ error: 'Failed to toggle ads' });
+  }
+});
 
 // ==================== START SERVER ====================
 
