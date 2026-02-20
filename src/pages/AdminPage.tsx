@@ -347,8 +347,8 @@ export function AdminPage({ onBack }: AdminPageProps) {
     );
   }
 
-  // Login screen
-  if (!adminStatus?.isLoggedIn || (adminStatus.mfaEnabled && !adminStatus.mfaVerified && !needsMfa)) {
+  // Login screen (password or MFA)
+  if (!adminStatus?.isLoggedIn || needsMfa || (adminStatus.mfaEnabled && !adminStatus.mfaVerified)) {
     return (
       <div className="min-h-screen bg-gray-900 text-white">
         <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
