@@ -1132,7 +1132,7 @@ app.post('/api/admin/login', (req, res) => {
  * POST /api/admin/verify-mfa
  * Verify MFA token after login
  */
-app.post('/api/admin/verify-mfa', (req, res) => {
+app.post('/api/admin/verify-mfa', async (req, res) => {
   try {
     const sessionId = req.headers['x-admin-session'];
     const { token } = req.body;
@@ -1142,7 +1142,7 @@ app.post('/api/admin/verify-mfa', (req, res) => {
       return res.status(401).json({ error: 'Invalid session' });
     }
     
-    const result = verifyMfa(token);
+    const result = await verifyMfa(token);
     if (!result.success) {
       return res.status(401).json({ error: result.error });
     }
@@ -1244,7 +1244,7 @@ app.post('/api/admin/mfa/setup', requireAdmin, async (req, res) => {
  * POST /api/admin/mfa/enable
  * Verify token and enable MFA
  */
-app.post('/api/admin/mfa/enable', requireAdmin, (req, res) => {
+app.post('/api/admin/mfa/enable', requireAdmin, async (req, res) => {
   try {
     const { secret, token, backupCodes } = req.body;
     
@@ -1252,7 +1252,7 @@ app.post('/api/admin/mfa/enable', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    const result = enableMfa(secret, token, backupCodes);
+    const result = await enableMfa(secret, token, backupCodes);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }

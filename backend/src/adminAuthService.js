@@ -1,6 +1,6 @@
 import db from './database.js';
 import crypto from 'crypto';
-import { TOTP, generateSecret as otpGenerateSecret, generateURI } from 'otplib';
+import { generateSecret as otpGenerateSecret, generateURI, verify as otpVerify } from 'otplib';
 
 // Initialize admin auth table
 db.exec(`
@@ -170,30 +170,34 @@ export function setupMfa() {
 /**
  * Verify and enable MFA
  */
-export function enableMfa(secret, token, backupCodes) {
-  const totp = new TOTP({ secret });
-  const isValid = totp.validate({ token }) !== null;
-  
-  if (!isValid) {
+export async function enableMfa(secret, token, backupCodes) {
+  try {
+    const result = await otpVerify({ token, secret });
+    
+    if (!result.valid) {
+      return { success: false, error: 'Invalid verification code' };
+    }
+    
+    db.prepare(`
+      UPDATE admin_auth SET 
+        mfa_enabled = 1, 
+        mfa_secret = ?, 
+        mfa_backup_codes = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = 'admin'
+    `).run(secret, JSON.stringify(backupCodes));
+    
+    return { success: true };
+  } catch (err) {
+    console.error('MFA verification error:', err);
     return { success: false, error: 'Invalid verification code' };
   }
-  
-  db.prepare(`
-    UPDATE admin_auth SET 
-      mfa_enabled = 1, 
-      mfa_secret = ?, 
-      mfa_backup_codes = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = 'admin'
-  `).run(secret, JSON.stringify(backupCodes));
-  
-  return { success: true };
 }
 
 /**
  * Verify MFA token
  */
-export function verifyMfa(token) {
+export async function verifyMfa(token) {
   const admin = db.prepare('SELECT mfa_secret, mfa_backup_codes FROM admin_auth WHERE id = ?').get('admin');
   
   if (!admin || !admin.mfa_secret) {
@@ -201,9 +205,13 @@ export function verifyMfa(token) {
   }
   
   // Check TOTP token
-  const totp = new TOTP({ secret: admin.mfa_secret });
-  if (totp.validate({ token }) !== null) {
-    return { success: true };
+  try {
+    const result = await otpVerify({ token, secret: admin.mfa_secret });
+    if (result.valid) {
+      return { success: true };
+    }
+  } catch (err) {
+    // Token verification failed, check backup codes
   }
   
   // Check backup codes
