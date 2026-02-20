@@ -83,7 +83,7 @@ function App() {
             </div>
             
             {/* Navigation Buttons */}
-            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-3 -mx-1 px-1 sm:mx-0 sm:px-0 nav-scroll">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
               <button
                 onClick={() => setCurrentPage('buy')}
                 className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-green-900/50 hover:bg-green-800/50 text-green-400 rounded-lg transition-colors border border-green-700/50 text-sm shrink-0"
