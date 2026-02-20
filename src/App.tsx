@@ -117,13 +117,6 @@ function App() {
                 <span className="hidden lg:inline">Analysis</span>
               </button>
               <button
-                onClick={() => setCurrentPage('products')}
-                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm shrink-0"
-              >
-                <Layers className="w-4 h-4" />
-                <span className="hidden md:inline">Products</span>
-              </button>
-              <button
                 onClick={() => setCurrentPage('donate')}
                 className="p-1.5 sm:p-2 bg-pink-900/50 hover:bg-pink-800/50 text-pink-400 rounded-lg transition-colors shrink-0 border border-pink-700/50"
                 title="Support Us"
@@ -136,6 +129,13 @@ function App() {
                 title="Admin"
               >
                 <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <button
+                onClick={() => setCurrentPage('products')}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm shrink-0"
+              >
+                <Layers className="w-4 h-4" />
+                <span className="hidden md:inline">Products</span>
               </button>
               <button
                 onClick={() => setCurrentPage('settings')}

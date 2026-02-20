@@ -149,8 +149,16 @@ export function AdminPage({ onBack }: AdminPageProps) {
       setSessionId(data.data.sessionId);
       localStorage.setItem('adminSession', data.data.sessionId);
       
-      if (data.data.mfaRequired) {
+      // Check auth status first to confirm MFA is actually established
+      const statusResponse = await fetch(`${API_BASE}/admin/status`, {
+        headers: { 'X-Admin-Session': data.data.sessionId }
+      });
+      const statusData = await statusResponse.json();
+      
+      // Only set needsMfa after confirming MFA is established
+      if (statusData.data?.mfaEnabled && data.data.mfaRequired) {
         setNeedsMfa(true);
+        setAdminStatus(statusData.data);
       } else {
         await checkAuthStatus();
       }
