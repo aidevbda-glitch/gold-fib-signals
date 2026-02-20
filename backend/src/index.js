@@ -43,6 +43,20 @@ import {
   updateAdSettings,
   toggleAds
 } from './adService.js';
+import {
+  verifyPassword,
+  changePassword,
+  createSession,
+  verifySession,
+  updateSessionMfa,
+  invalidateSession,
+  setupMfa,
+  enableMfa,
+  verifyMfa,
+  disableMfa,
+  getAdminStatus
+} from './adminAuthService.js';
+import QRCode from 'qrcode';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1011,9 +1025,9 @@ app.get('/api/donations/goal', (req, res) => {
 
 /**
  * PUT /api/donations/goal
- * Set donation goal
+ * Set donation goal (admin only)
  */
-app.put('/api/donations/goal', (req, res) => {
+app.put('/api/donations/goal', requireAdmin, (req, res) => {
   try {
     const { target, description } = req.body;
     if (!target || target <= 0) {
@@ -1058,6 +1072,220 @@ app.post('/api/donations', (req, res) => {
   }
 });
 
+// ==================== ADMIN AUTH ENDPOINTS ====================
+
+/**
+ * Middleware to verify admin session
+ */
+const requireAdmin = (req, res, next) => {
+  const sessionId = req.headers['x-admin-session'];
+  const session = verifySession(sessionId);
+  
+  if (!session.valid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (session.mfaRequired && !session.mfaVerified) {
+    return res.status(403).json({ error: 'MFA verification required', mfaRequired: true });
+  }
+  
+  req.adminSession = session;
+  next();
+};
+
+/**
+ * POST /api/admin/login
+ * Login with password
+ */
+app.post('/api/admin/login', (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password required' });
+    }
+    
+    if (!verifyPassword(password)) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    const status = getAdminStatus();
+    const session = createSession(!status.mfaEnabled); // Auto-verify MFA if not enabled
+    
+    res.json({
+      data: {
+        sessionId: session.sessionId,
+        expiresAt: session.expiresAt,
+        mfaRequired: status.mfaEnabled,
+        isTempPassword: status.isTempPassword
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * POST /api/admin/verify-mfa
+ * Verify MFA token after login
+ */
+app.post('/api/admin/verify-mfa', (req, res) => {
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    const { token } = req.body;
+    
+    const session = verifySession(sessionId);
+    if (!session.valid) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+    
+    const result = verifyMfa(token);
+    if (!result.success) {
+      return res.status(401).json({ error: result.error });
+    }
+    
+    updateSessionMfa(sessionId, true);
+    
+    res.json({
+      data: {
+        success: true,
+        usedBackupCode: result.usedBackupCode,
+        remainingBackupCodes: result.remainingBackupCodes
+      }
+    });
+  } catch (error) {
+    console.error('MFA verification error:', error);
+    res.status(500).json({ error: 'MFA verification failed' });
+  }
+});
+
+/**
+ * POST /api/admin/logout
+ * Logout and invalidate session
+ */
+app.post('/api/admin/logout', (req, res) => {
+  const sessionId = req.headers['x-admin-session'];
+  if (sessionId) {
+    invalidateSession(sessionId);
+  }
+  res.json({ success: true });
+});
+
+/**
+ * GET /api/admin/status
+ * Get admin account status
+ */
+app.get('/api/admin/status', (req, res) => {
+  const sessionId = req.headers['x-admin-session'];
+  const session = verifySession(sessionId);
+  const status = getAdminStatus();
+  
+  res.json({
+    data: {
+      ...status,
+      isLoggedIn: session.valid,
+      mfaVerified: session.mfaVerified
+    }
+  });
+});
+
+/**
+ * POST /api/admin/change-password
+ * Change admin password
+ */
+app.post('/api/admin/change-password', requireAdmin, (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current and new password required' });
+    }
+    
+    const result = changePassword(currentPassword, newPassword);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Password change error:', error);
+    res.status(500).json({ error: 'Password change failed' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/setup
+ * Start MFA setup - get QR code
+ */
+app.post('/api/admin/mfa/setup', requireAdmin, async (req, res) => {
+  try {
+    const mfaSetup = setupMfa();
+    
+    // Generate QR code
+    const qrCodeDataUrl = await QRCode.toDataURL(mfaSetup.otpauthUrl);
+    
+    res.json({
+      data: {
+        secret: mfaSetup.secret,
+        qrCode: qrCodeDataUrl,
+        backupCodes: mfaSetup.backupCodes
+      }
+    });
+  } catch (error) {
+    console.error('MFA setup error:', error);
+    res.status(500).json({ error: 'MFA setup failed' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/enable
+ * Verify token and enable MFA
+ */
+app.post('/api/admin/mfa/enable', requireAdmin, (req, res) => {
+  try {
+    const { secret, token, backupCodes } = req.body;
+    
+    if (!secret || !token || !backupCodes) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const result = enableMfa(secret, token, backupCodes);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('MFA enable error:', error);
+    res.status(500).json({ error: 'Failed to enable MFA' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/disable
+ * Disable MFA (requires password)
+ */
+app.post('/api/admin/mfa/disable', requireAdmin, (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password required' });
+    }
+    
+    const result = disableMfa(password);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('MFA disable error:', error);
+    res.status(500).json({ error: 'Failed to disable MFA' });
+  }
+});
+
 // ==================== AD SETTINGS ENDPOINTS ====================
 
 /**
@@ -1076,9 +1304,9 @@ app.get('/api/ads/settings', (req, res) => {
 
 /**
  * PUT /api/ads/settings
- * Update ad settings
+ * Update ad settings (admin only)
  */
-app.put('/api/ads/settings', (req, res) => {
+app.put('/api/ads/settings', requireAdmin, (req, res) => {
   try {
     const { adsEnabled, adsensePublisherId, placements } = req.body;
     const settings = updateAdSettings({ adsEnabled, adsensePublisherId, placements });
@@ -1091,9 +1319,9 @@ app.put('/api/ads/settings', (req, res) => {
 
 /**
  * POST /api/ads/toggle
- * Toggle ads on/off
+ * Toggle ads on/off (admin only)
  */
-app.post('/api/ads/toggle', (req, res) => {
+app.post('/api/ads/toggle', requireAdmin, (req, res) => {
   try {
     const { enabled } = req.body;
     const settings = toggleAds(enabled);

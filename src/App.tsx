@@ -14,10 +14,11 @@ import { SellSignalsPage } from './pages/SellSignalsPage';
 import { AnalysisPage } from './pages/AnalysisPage';
 import { PatternsPage } from './pages/PatternsPage';
 import { DonationPage } from './pages/DonationPage';
+import { AdminPage } from './pages/AdminPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart, Heart } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart, Heart, ShieldCheck } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate' | 'admin';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -57,6 +58,10 @@ function App() {
 
   if (currentPage === 'donate') {
     return <DonationPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'admin') {
+    return <AdminPage onBack={() => setCurrentPage('signals')} />;
   }
 
   return (
@@ -124,6 +129,13 @@ function App() {
                 title="Support Us"
               >
                 <Heart className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <button
+                onClick={() => setCurrentPage('admin')}
+                className="p-1.5 sm:p-2 bg-yellow-900/50 hover:bg-yellow-800/50 text-yellow-400 rounded-lg transition-colors shrink-0 border border-yellow-700/50"
+                title="Admin"
+              >
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setCurrentPage('settings')}
