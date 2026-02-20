@@ -48,25 +48,20 @@ body {
   display: none;
 }
 
-/* Nav scrollbar with offset */
-.nav-scroll {
-  scrollbar-gutter: stable;
-}
+/* Nav scrollbar styling */
 .nav-scroll::-webkit-scrollbar {
-  height: 6px;
-  margin-top: 8px;
+  height: 8px;
 }
 .nav-scroll::-webkit-scrollbar-track {
-  background: transparent;
-  margin-top: 8px;
-  border-top: 8px solid transparent;
-  background-clip: padding-box;
+  background: #374151;
+  border-radius: 4px;
 }
 .nav-scroll::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 3px;
-  border-top: 8px solid transparent;
-  background-clip: padding-box;
+  background: #6b7280;
+  border-radius: 4px;
+}
+.nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 /* Animations */
