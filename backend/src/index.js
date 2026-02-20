@@ -963,6 +963,27 @@ function calculateMACD(data) {
   return { line, signal, histogram };
 }
 
+// ==================== ADMIN MIDDLEWARE ====================
+
+/**
+ * Middleware to verify admin session
+ */
+const requireAdmin = (req, res, next) => {
+  const sessionId = req.headers['x-admin-session'];
+  const session = verifySession(sessionId);
+  
+  if (!session.valid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (session.mfaRequired && !session.mfaVerified) {
+    return res.status(403).json({ error: 'MFA verification required', mfaRequired: true });
+  }
+  
+  req.adminSession = session;
+  next();
+};
+
 // ==================== DONATION ENDPOINTS ====================
 
 /**
@@ -1073,25 +1094,6 @@ app.post('/api/donations', (req, res) => {
 });
 
 // ==================== ADMIN AUTH ENDPOINTS ====================
-
-/**
- * Middleware to verify admin session
- */
-const requireAdmin = (req, res, next) => {
-  const sessionId = req.headers['x-admin-session'];
-  const session = verifySession(sessionId);
-  
-  if (!session.valid) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  if (session.mfaRequired && !session.mfaVerified) {
-    return res.status(403).json({ error: 'MFA verification required', mfaRequired: true });
-  }
-  
-  req.adminSession = session;
-  next();
-};
 
 /**
  * POST /api/admin/login

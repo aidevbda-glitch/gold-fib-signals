@@ -1,6 +1,6 @@
 import db from './database.js';
 import crypto from 'crypto';
-import { authenticator } from 'otplib';
+import { TOTP, generateSecret as otpGenerateSecret, generateURI } from 'otplib';
 
 // Initialize admin auth table
 db.exec(`
@@ -154,7 +154,7 @@ export function invalidateSession(sessionId) {
  * Setup MFA - generate secret and backup codes
  */
 export function setupMfa() {
-  const secret = authenticator.generateSecret();
+  const secret = otpGenerateSecret();
   const backupCodes = Array.from({ length: 8 }, () => 
     crypto.randomBytes(4).toString('hex').toUpperCase()
   );
@@ -162,7 +162,7 @@ export function setupMfa() {
   // Don't save yet - just return for user to verify first
   return {
     secret,
-    otpauthUrl: authenticator.keyuri('admin', 'GoldFibSignals', secret),
+    otpauthUrl: generateURI({ issuer: 'GoldFibSignals', label: 'admin', secret, algorithm: 'SHA1', digits: 6, period: 30 }),
     backupCodes
   };
 }
@@ -171,7 +171,8 @@ export function setupMfa() {
  * Verify and enable MFA
  */
 export function enableMfa(secret, token, backupCodes) {
-  const isValid = authenticator.verify({ token, secret });
+  const totp = new TOTP({ secret });
+  const isValid = totp.validate({ token }) !== null;
   
   if (!isValid) {
     return { success: false, error: 'Invalid verification code' };
@@ -200,7 +201,8 @@ export function verifyMfa(token) {
   }
   
   // Check TOTP token
-  if (authenticator.verify({ token, secret: admin.mfa_secret })) {
+  const totp = new TOTP({ secret: admin.mfa_secret });
+  if (totp.validate({ token }) !== null) {
     return { success: true };
   }
   
