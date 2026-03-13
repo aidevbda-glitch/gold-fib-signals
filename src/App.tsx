@@ -307,7 +307,6 @@ function App() {
       <footer className="border-t border-gray-800 mt-12 py-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-gray-500 text-sm">
           <p>Gold Fib Signals • Built with React + Vite</p>
-          <p className="mt-1">Data refreshes every 5 seconds • Using mock data for demo</p>
         </div>
       </footer>
     </div>
