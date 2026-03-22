@@ -15,6 +15,23 @@ import {
 } from './goldPriceService.js';
 import { saveSignal, getSignals, getSignalStats, getLatestSignal, getSignalsByDateRange } from './signalService.js';
 import {
+  initMacroTables,
+  getFullMacroContext,
+  fetchFedProbabilities,
+  fetchTreasuryYields,
+  fetchDXY,
+  calculateGoldDXYCorrelation
+} from './macroDataService.js';
+import {
+  getMacroRegimeAnalysis,
+  doesMacroConfirmSignal,
+  adjustSignalStrength,
+  generateMacroContextSummary,
+  getRegimeHistory,
+  MACRO_REGIMES,
+  GOLD_BIAS
+} from './macroRegimeService.js';
+import {
   getAllApiProviders,
   getApiProvider,
   addApiProvider,
@@ -879,6 +896,166 @@ app.get('/api/macro/sentiment', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/macro/full-context
+ * Get comprehensive macro context (Fed, yields, DXY)
+ */
+app.get('/api/macro/full-context', async (req, res) => {
+  try {
+    const context = await getFullMacroContext();
+    res.json(context);
+  } catch (error) {
+    console.error('Error fetching macro context:', error);
+    res.status(500).json({ error: 'Failed to fetch macro context' });
+  }
+});
+
+/**
+ * GET /api/macro/rates
+ * Get Fed funds futures probabilities
+ */
+app.get('/api/macro/rates', async (req, res) => {
+  try {
+    const rates = await fetchFedProbabilities();
+    res.json(rates);
+  } catch (error) {
+    console.error('Error fetching Fed rates:', error);
+    res.status(500).json({ error: 'Failed to fetch Fed rate data' });
+  }
+});
+
+/**
+ * GET /api/macro/yields
+ * Get Treasury yields
+ */
+app.get('/api/macro/yields', async (req, res) => {
+  try {
+    const yields = await fetchTreasuryYields();
+    res.json(yields);
+  } catch (error) {
+    console.error('Error fetching Treasury yields:', error);
+    res.status(500).json({ error: 'Failed to fetch Treasury yield data' });
+  }
+});
+
+/**
+ * GET /api/macro/dxy
+ * Get US Dollar Index data
+ */
+app.get('/api/macro/dxy', async (req, res) => {
+  try {
+    const dxy = await fetchDXY();
+    res.json(dxy);
+  } catch (error) {
+    console.error('Error fetching DXY:', error);
+    res.status(500).json({ error: 'Failed to fetch DXY data' });
+  }
+});
+
+/**
+ * GET /api/macro/correlation
+ * Get gold/DXY correlation
+ * Query params: days (default 20)
+ */
+app.get('/api/macro/correlation', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 20;
+    const correlation = calculateGoldDXYCorrelation(days);
+    res.json({
+      days,
+      correlation: correlation.correlation,
+      sampleSize: correlation.sampleSize,
+      interpretation: correlation.correlation < -0.7 ? 'Strong inverse correlation' :
+                      correlation.correlation < -0.4 ? 'Moderate inverse correlation' :
+                      correlation.correlation < 0 ? 'Weak inverse correlation' :
+                      correlation.correlation > 0.4 ? 'Positive correlation (unusual)' :
+                      'Weak correlation'
+    });
+  } catch (error) {
+    console.error('Error calculating correlation:', error);
+    res.status(500).json({ error: 'Failed to calculate correlation' });
+  }
+});
+
+/**
+ * GET /api/macro/regime
+ * Get current macro regime classification and gold bias
+ */
+app.get('/api/macro/regime', async (req, res) => {
+  try {
+    const analysis = await getMacroRegimeAnalysis();
+    res.json(analysis);
+  } catch (error) {
+    console.error('Error fetching macro regime:', error);
+    res.status(500).json({ error: 'Failed to fetch macro regime analysis' });
+  }
+});
+
+/**
+ * GET /api/macro/regime/history
+ * Get historical regime classifications
+ * Query params: days (default 30)
+ */
+app.get('/api/macro/regime/history', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 30;
+    const history = getRegimeHistory(days);
+    res.json({
+      days,
+      count: history.length,
+      data: history
+    });
+  } catch (error) {
+    console.error('Error fetching regime history:', error);
+    res.status(500).json({ error: 'Failed to fetch regime history' });
+  }
+});
+
+/**
+ * POST /api/signals/with-macro
+ * Generate a signal with macro context
+ */
+app.post('/api/signals/with-macro', async (req, res) => {
+  try {
+    const { signal } = req.body;
+    
+    if (!signal || !signal.type || !signal.strength) {
+      return res.status(400).json({ error: 'Missing required fields: signal.type, signal.strength' });
+    }
+
+    const macroAnalysis = await getMacroRegimeAnalysis();
+    const confirmation = doesMacroConfirmSignal(signal.type, macroAnalysis);
+    const adjusted = adjustSignalStrength(signal.strength, signal.type, macroAnalysis);
+    const summary = generateMacroContextSummary(macroAnalysis);
+
+    res.json({
+      originalSignal: signal,
+      macroContext: {
+        regime: macroAnalysis.regime,
+        goldBias: macroAnalysis.goldBias,
+        confidence: macroAnalysis.confidence,
+        summary: summary.summary,
+      },
+      confirmation,
+      adjustment: adjusted,
+      enhancedSignal: {
+        ...signal,
+        strength: adjusted.adjusted,
+        macroContext: {
+          confirms: confirmation.confirms,
+          macroConfidence: confirmation.confidence,
+          regime: macroAnalysis.regime,
+          goldBias: macroAnalysis.goldBias,
+        },
+        macroExplanation: confirmation.reason,
+      }
+    });
+  } catch (error) {
+    console.error('Error generating signal with macro:', error);
+    res.status(500).json({ error: 'Failed to generate signal with macro context' });
+  }
+});
+
 // Helper functions for technical calculations
 function calculateSMA(data, period) {
   if (data.length < period) return null;
@@ -965,6 +1142,9 @@ async function pollSwissquote() {
   }
 }
 
+// Initialize macro tables
+initMacroTables();
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 🥇 Gold Fib Signals API Server
@@ -996,6 +1176,15 @@ Endpoints:
   Polling:
   GET  /api/polling/stats           - Tick collection statistics
   GET  /api/polling/config          - Polling configuration
+  
+  Macro Analysis:
+  GET  /api/macro/full-context      - Comprehensive macro context
+  GET  /api/macro/rates             - Fed funds futures probabilities
+  GET  /api/macro/yields            - Treasury yields
+  GET  /api/macro/dxy               - US Dollar Index
+  GET  /api/macro/correlation       - Gold/DXY correlation
+  GET  /api/macro/regime            - Macro regime classification
+  GET  /api/macro/regime/history    - Historical regime data
   
   Settings:
   GET  /api/settings                - Get all settings

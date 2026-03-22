@@ -11,7 +11,7 @@ interface StoreActions {
   fetchHistoricalData: (range?: string) => Promise<void>;
   fetchIntradayData: () => Promise<void>;
   calculateFibLevels: () => void;
-  generateSignal: () => void;
+  generateSignal: () => Promise<void>;
   startRealTimeUpdates: () => () => void;
   setError: (error: string | null) => void;
   clearSignals: () => void;
@@ -118,7 +118,7 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  generateSignal: () => {
+  generateSignal: async () => {
     const { currentPrice, fibLevels, priceHistory, signals } = get();
     
     if (!currentPrice || !fibLevels || priceHistory.length < 10) {
@@ -131,10 +131,11 @@ export const useStore = create<Store>((set, get) => ({
       return;
     }
 
-    const signal = SignalService.generateSignal(
+    const signal = await SignalService.generateSignal(
       currentPrice,
       fibLevels,
-      priceHistory
+      priceHistory,
+      true // include macro context
     );
 
     if (signal) {
