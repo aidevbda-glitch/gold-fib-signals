@@ -214,7 +214,7 @@ export class SignalService {
    * Now includes macro-driven triggers for enhanced signal quality
    */
   private static determineSignal(
-    currentPrice: number,
+    _currentPrice: number,
     fibLevels: FibonacciLevels,
     nearest: ReturnType<typeof FibonacciService.findNearestLevel>,
     position: ReturnType<typeof FibonacciService.analyzePosition>,
@@ -229,8 +229,6 @@ export class SignalService {
     // Check macro conditions for enhanced signals
     const isHawkishFed = macroAnalysis?.regime === 'hawkish_fed_rising_rates' ||
                          macroAnalysis?.factors.fedSentiment === 'hawkish';
-    const isDovishFed = macroAnalysis?.regime === 'dovish_fed_easing' ||
-                        macroAnalysis?.factors.fedSentiment === 'dovish';
     const dxyStrengthening = macroAnalysis?.macroContext.dollarContext.dxyTrend === 'strengthening';
     const goldBiasBearish = macroAnalysis?.goldBias === 'bearish' || 
                             macroAnalysis?.goldBias === 'strong_bearish';
