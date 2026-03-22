@@ -43,6 +43,13 @@ export interface TradingSignal {
     trendDirection: 'UP' | 'DOWN' | 'SIDEWAYS';
     priceAction: string;
   };
+  macroContext?: {
+    confirms: boolean;
+    macroConfidence: number;
+    regime: string;
+    goldBias: string;
+  };
+  macroExplanation?: string;
 }
 
 export interface GoldQuote {

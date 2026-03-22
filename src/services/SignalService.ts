@@ -8,6 +8,7 @@ import type {
   GoldQuote 
 } from '../types/trading';
 import { FibonacciService } from './FibonacciService';
+import { EnhancedMacroAnalysisService, type MacroRegimeAnalysis, type GoldBias } from './EnhancedMacroAnalysisService';
 
 /**
  * Signal Generation Service
@@ -21,17 +22,29 @@ export class SignalService {
 
   /**
    * Generate a trading signal with full explanation
+   * Now includes macro context for enhanced signal quality
    */
-  static generateSignal(
+  static async generateSignal(
     currentQuote: GoldQuote,
     fibLevels: FibonacciLevels,
-    recentPrices: PriceData[]
-  ): TradingSignal | null {
+    recentPrices: PriceData[],
+    includeMacro: boolean = true
+  ): Promise<TradingSignal | null> {
     const currentPrice = currentQuote.price;
     const nearest = FibonacciService.findNearestLevel(currentPrice, fibLevels);
     const position = FibonacciService.analyzePosition(currentPrice, fibLevels);
     const trend = this.analyzeTrend(recentPrices);
     const priceAction = this.analyzePriceAction(recentPrices);
+
+    // Fetch macro context if requested
+    let macroAnalysis: MacroRegimeAnalysis | null = null;
+    if (includeMacro) {
+      try {
+        macroAnalysis = await EnhancedMacroAnalysisService.getMacroRegime();
+      } catch (error) {
+        console.warn('Failed to fetch macro analysis:', error);
+      }
+    }
 
     // Determine signal type and strength
     const { type, strength } = this.determineSignal(
@@ -40,7 +53,8 @@ export class SignalService {
       nearest,
       position,
       trend,
-      priceAction
+      priceAction,
+      macroAnalysis
     );
 
     // Don't generate HOLD signals as actual signals
@@ -48,22 +62,45 @@ export class SignalService {
       return null;
     }
 
+    // Adjust strength based on macro context
+    let adjustedStrength = strength;
+    let macroContext = undefined;
+    let macroExplanation = '';
+
+    if (macroAnalysis && includeMacro) {
+      const adjustment = await EnhancedMacroAnalysisService.adjustSignalStrength(
+        strength,
+        type
+      );
+      adjustedStrength = adjustment.adjusted as SignalStrength;
+      
+      macroContext = {
+        confirms: adjustment.confirms,
+        macroConfidence: adjustment.macroConfidence,
+        regime: macroAnalysis.regime,
+        goldBias: macroAnalysis.goldBias,
+      };
+      macroExplanation = adjustment.reason;
+    }
+
     // Generate plain-language explanation
     const explanation = this.generateExplanation(
       type,
-      strength,
+      adjustedStrength,
       currentPrice,
       fibLevels,
       nearest,
       position,
       trend,
-      priceAction
+      priceAction,
+      macroAnalysis,
+      strength !== adjustedStrength // wasAdjusted
     );
 
     return {
       id: uuidv4(),
       type,
-      strength,
+      strength: adjustedStrength,
       price: currentPrice,
       timestamp: Date.now(),
       fibLevel: nearest.level,
@@ -76,6 +113,8 @@ export class SignalService {
         trendDirection: trend.direction,
         priceAction: priceAction.description,
       },
+      macroContext,
+      macroExplanation,
     };
   }
 
@@ -172,18 +211,29 @@ export class SignalService {
 
   /**
    * Determine signal type and strength based on all factors
+   * Now includes macro-driven triggers for enhanced signal quality
    */
   private static determineSignal(
-    _currentPrice: number,
+    currentPrice: number,
     fibLevels: FibonacciLevels,
     nearest: ReturnType<typeof FibonacciService.findNearestLevel>,
     position: ReturnType<typeof FibonacciService.analyzePosition>,
     trend: ReturnType<typeof SignalService.analyzeTrend>,
-    priceAction: ReturnType<typeof SignalService.analyzePriceAction>
+    priceAction: ReturnType<typeof SignalService.analyzePriceAction>,
+    macroAnalysis: MacroRegimeAnalysis | null = null
   ): { type: SignalType; strength: SignalStrength } {
     const { direction } = fibLevels;
     const atKeyLevel = nearest.percentDistance < this.PROXIMITY_THRESHOLD;
     const isStrongLevel = ['38.2%', '50%', '61.8%'].includes(nearest.level);
+
+    // Check macro conditions for enhanced signals
+    const isHawkishFed = macroAnalysis?.regime === 'hawkish_fed_rising_rates' ||
+                         macroAnalysis?.factors.fedSentiment === 'hawkish';
+    const isDovishFed = macroAnalysis?.regime === 'dovish_fed_easing' ||
+                        macroAnalysis?.factors.fedSentiment === 'dovish';
+    const dxyStrengthening = macroAnalysis?.macroContext.dollarContext.dxyTrend === 'strengthening';
+    const goldBiasBearish = macroAnalysis?.goldBias === 'bearish' || 
+                            macroAnalysis?.goldBias === 'strong_bearish';
 
     // BULLISH trend context
     if (direction === 'bullish') {
@@ -205,6 +255,18 @@ export class SignalService {
       // SELL signals: price extended above resistance
       if (position.zone === 'above_high' && priceAction.momentum === 'BEARISH') {
         return { type: 'SELL', strength: 'MODERATE' };
+      }
+
+      // MACRO-DRIVEN SELL: Overextension + hawkish Fed
+      // Price extended with rising rate risk = take profits
+      if (position.zone === 'above_high' && isHawkishFed) {
+        return { type: 'SELL', strength: 'STRONG' };
+      }
+
+      // MACRO-DRIVEN SELL: Break below 78.6% support + hawkish macro
+      // Technical breakdown confirmed by macro headwinds
+      if (position.zone === 'below_low' && isHawkishFed && goldBiasBearish) {
+        return { type: 'SELL', strength: 'STRONG' };
       }
 
       // Weak BUY near 38.2% in uptrend
@@ -234,6 +296,18 @@ export class SignalService {
       if (position.zone === 'below_low' && priceAction.momentum === 'BULLISH') {
         return { type: 'BUY', strength: 'MODERATE' };
       }
+
+      // MACRO-DRIVEN SELL: Deep retracement to resistance + hawkish Fed
+      // In bearish trend, bounces to 61.8% with hawkish backdrop = short opportunity
+      if (atKeyLevel && nearest.level === '61.8%' && isHawkishFed && dxyStrengthening) {
+        return { type: 'SELL', strength: 'STRONG' };
+      }
+    }
+
+    // MACRO-DRIVEN SELL: Breakdown through support during hawkish regime
+    // Price below swing low with hawkish macro = follow the macro
+    if (position.zone === 'below_low' && isHawkishFed && goldBiasBearish) {
+      return { type: 'SELL', strength: 'STRONG' };
     }
 
     return { type: 'HOLD', strength: 'WEAK' };
@@ -242,6 +316,7 @@ export class SignalService {
   /**
    * Generate plain-language explanation for the signal
    * Written in conversational, easy-to-understand language
+   * Now includes macro context for enhanced explanations
    */
   private static generateExplanation(
     type: SignalType,
@@ -251,7 +326,9 @@ export class SignalService {
     nearest: ReturnType<typeof FibonacciService.findNearestLevel>,
     _position: ReturnType<typeof FibonacciService.analyzePosition>,
     trend: ReturnType<typeof SignalService.analyzeTrend>,
-    priceAction: ReturnType<typeof SignalService.analyzePriceAction>
+    priceAction: ReturnType<typeof SignalService.analyzePriceAction>,
+    macroAnalysis: MacroRegimeAnalysis | null = null,
+    wasAdjusted: boolean = false
   ): string {
     const price = currentPrice.toFixed(2);
     const fibPrice = nearest.value.toFixed(2);
@@ -345,7 +422,56 @@ export class SignalService {
     parts.push(`\n\n📊 **Current Momentum:**`);
     parts.push(`${trend.description}. ${priceAction.description}.`);
 
-    // 6. SIGNAL STRENGTH EXPLANATION  
+    // 6. MACRO CONTEXT (NEW)
+    if (macroAnalysis) {
+      parts.push(`\n\n🌍 **Macro Environment:**`);
+      parts.push(`Current regime: ${macroAnalysis.regime.replace(/_/g, ' ')}.`);
+      
+      const { macroContext } = macroAnalysis;
+      
+      // Fed policy summary
+      const hikeProb = macroContext.rateExpectations.hikeProbability;
+      const cutProb = macroContext.rateExpectations.cutProbability;
+      const fedAction = hikeProb > 50 ? `hiking (${hikeProb}% probability)` :
+                        cutProb > 50 ? `cutting (${cutProb}% probability)` : 'on hold';
+      parts.push(`Fed is ${fedAction}.`);
+      
+      // DXY summary
+      const dxy = macroContext.dollarContext;
+      parts.push(`DXY at ${dxy.dxyCurrent.toFixed(2)} (${dxy.dxyTrend}, ${dxy.dxyChange7d > 0 ? '+' : ''}${dxy.dxyChange7d.toFixed(1)}% 7d).`);
+      
+      // Yield curve
+      const curve = macroContext.treasuryYields;
+      if (curve.isInverted) {
+        parts.push(`⚠️ Yield curve is inverted (${curve.yieldSpread10Y2Y.toFixed(2)}% spread) - recession risk elevated.`);
+      }
+      
+      // Gold bias
+      const biasEmoji: Record<GoldBias, string> = {
+        strong_bullish: '🟢',
+        bullish: '🟢',
+        neutral: '🟡',
+        bearish: '🔴',
+        strong_bearish: '🔴',
+      };
+      parts.push(`${biasEmoji[macroAnalysis.goldBias] || '🟡'} Gold bias: ${macroAnalysis.goldBias.replace(/_/g, ' ')}.`);
+      
+      // Macro impact on signal
+      if (wasAdjusted) {
+        parts.push(`\n📈 **Macro Impact:** Signal strength was adjusted based on macro context.`);
+        if (macroAnalysis.goldBias === 'strong_bullish' && type === 'BUY') {
+          parts.push(`Strong macro tailwinds support this BUY signal.`);
+        } else if (macroAnalysis.goldBias === 'strong_bearish' && type === 'SELL') {
+          parts.push(`Strong macro headwinds support this SELL signal.`);
+        } else if ((macroAnalysis.goldBias === 'bearish' || macroAnalysis.goldBias === 'strong_bearish') && type === 'BUY') {
+          parts.push(`⚠️ Caution: Macro headwinds present. This BUY signal has been downgraded.`);
+        } else if ((macroAnalysis.goldBias === 'bullish' || macroAnalysis.goldBias === 'strong_bullish') && type === 'SELL') {
+          parts.push(`⚠️ Caution: Macro tailwinds present. This SELL signal has been downgraded.`);
+        }
+      }
+    }
+
+    // 7. SIGNAL STRENGTH EXPLANATION  
     parts.push(`\n\n⚡ **Signal Strength: ${strength}**`);
     
     if (strength === 'STRONG') {

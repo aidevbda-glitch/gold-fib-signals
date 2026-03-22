@@ -7,7 +7,10 @@ A real-time trading signal application for Gold (XAU/USD) based on **Fibonacci r
 - 📈 **Real-time gold price tracking** (XAU/USD via Yahoo Finance API - FREE)
 - 🔢 **Automatic Fibonacci level calculation** from price swings
 - 🟢🔴 **Buy/Sell signal generation** based on Fibonacci confluence
-- 💬 **Plain-language explanations** for every signal
+- 🌍 **Macro factor integration** - Fed policy, DXY, Treasury yields
+- 📊 **Macro regime classification** - Hawkish/dovish Fed, recession risk, etc.
+- 🎯 **Signal strength adjustment** based on macro alignment
+- 💬 **Plain-language explanations** for every signal with macro context
 - 📊 **Interactive price chart** with Fibonacci overlays
 - 🎯 **Signal strength indicators** (Strong/Moderate/Weak)
 - 🏦 **Gold Products comparison** (Spot, Futures, ETFs, CFDs, Options)

@@ -7,6 +7,7 @@ import { SignalsList } from './components/SignalsList';
 import { PriceChart } from './components/PriceChart';
 import { IntradayChart } from './components/IntradayChart';
 import { LastSignalBanner } from './components/LastSignalBanner';
+import { MacroDashboard } from './components/MacroDashboard';
 import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
@@ -252,9 +253,12 @@ function App() {
             <SignalsList />
           </div>
 
-          {/* Right Column - Fibonacci Levels */}
+          {/* Right Column - Fibonacci Levels & Macro */}
           <div className="space-y-6">
             <FibonacciLevels />
+            
+            {/* Macro Dashboard - NEW */}
+            <MacroDashboard />
             
             {/* Info Card */}
             <div className="bg-gray-800 rounded-xl p-6">
