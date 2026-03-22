@@ -90,7 +90,7 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
 
   if (!analysis) return null;
 
-  const { macroContext, goldBias, regime, confidence, factors } = analysis;
+  const { macroContext, goldBias, regime, confidence } = analysis;
   const { rateExpectations, treasuryYields, dollarContext } = macroContext;
 
   return (

@@ -9,10 +9,13 @@
  * - Macro regime classification
  */
 
-import { MacroAnalysisService as BaseMacroService } from './MacroAnalysisService';
-
 export interface FedProbabilities {
   nextMeeting: string;
+  hikeProbability: number;
+  cutProbability: number;
+  holdProbability: number;
+  terminalRateCurrent: number;
+  terminalRateExpected: number;
   meetings: Array<{
     date: string;
     hikeProbability: number;
@@ -20,7 +23,6 @@ export interface FedProbabilities {
     holdProbability: number;
     terminalRateExpected: number;
   }>;
-  terminalRateCurrent: number;
   source: string;
   lastUpdated: number;
 }
@@ -142,16 +144,21 @@ export class EnhancedMacroAnalysisService {
       console.warn('Failed to fetch Fed probabilities:', error);
     }
 
+    const nextMeeting = this.getNextFOMCMeeting();
     return {
-      nextMeeting: this.getNextFOMCMeeting(),
+      nextMeeting,
+      hikeProbability: 33,
+      cutProbability: 33,
+      holdProbability: 34,
+      terminalRateCurrent: 4.50,
+      terminalRateExpected: 4.50,
       meetings: [{
-        date: this.getNextFOMCMeeting(),
+        date: nextMeeting,
         hikeProbability: 33,
         cutProbability: 33,
         holdProbability: 34,
         terminalRateExpected: 4.50,
       }],
-      terminalRateCurrent: 4.50,
       source: 'default',
       lastUpdated: Date.now(),
     };
