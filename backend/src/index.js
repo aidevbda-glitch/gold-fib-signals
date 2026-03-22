@@ -32,6 +32,24 @@ import {
   GOLD_BIAS
 } from './macroRegimeService.js';
 import {
+  initProviderTables,
+  seedDefaultProviders,
+  getAllProviders,
+  getActiveProviders,
+  getProvider,
+  addProvider,
+  updateProvider,
+  deleteProvider,
+  setProviderPriority,
+  toggleProviderActive,
+  testProvider,
+  getProviderStats,
+  getProviderDashboard,
+  runHealthChecks,
+  getFallbackHistory,
+  fetchPriceWithFallback
+} from './providerService.js';
+import {
   getAllApiProviders,
   getApiProvider,
   addApiProvider,
@@ -1083,6 +1101,224 @@ app.post('/api/signals/with-macro', async (req, res) => {
   }
 });
 
+// ==================== DATA PROVIDER MANAGEMENT ENDPOINTS ====================
+
+/**
+ * GET /api/providers
+ * Get all data providers
+ */
+app.get('/api/providers', (req, res) => {
+  try {
+    const providers = getAllProviders();
+    res.json({ data: providers });
+  } catch (error) {
+    console.error('Error fetching providers:', error);
+    res.status(500).json({ error: 'Failed to fetch providers' });
+  }
+});
+
+/**
+ * GET /api/providers/active
+ * Get active providers sorted by priority
+ */
+app.get('/api/providers/active', (req, res) => {
+  try {
+    const providers = getActiveProviders();
+    res.json({ data: providers });
+  } catch (error) {
+    console.error('Error fetching active providers:', error);
+    res.status(500).json({ error: 'Failed to fetch active providers' });
+  }
+});
+
+/**
+ * GET /api/providers/dashboard
+ * Get provider dashboard data for admin
+ */
+app.get('/api/providers/dashboard', (req, res) => {
+  try {
+    const dashboard = getProviderDashboard();
+    res.json(dashboard);
+  } catch (error) {
+    console.error('Error fetching provider dashboard:', error);
+    res.status(500).json({ error: 'Failed to fetch provider dashboard' });
+  }
+});
+
+/**
+ * GET /api/providers/:id
+ * Get a specific provider
+ */
+app.get('/api/providers/:id', (req, res) => {
+  try {
+    const provider = getProvider(req.params.id);
+    if (!provider) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error fetching provider:', error);
+    res.status(500).json({ error: 'Failed to fetch provider' });
+  }
+});
+
+/**
+ * POST /api/providers
+ * Add a new provider
+ */
+app.post('/api/providers', (req, res) => {
+  try {
+    const provider = addProvider(req.body);
+    res.status(201).json({ data: provider });
+  } catch (error) {
+    console.error('Error adding provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to add provider' });
+  }
+});
+
+/**
+ * PUT /api/providers/:id
+ * Update a provider
+ */
+app.put('/api/providers/:id', (req, res) => {
+  try {
+    const provider = updateProvider(req.params.id, req.body);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error updating provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to update provider' });
+  }
+});
+
+/**
+ * DELETE /api/providers/:id
+ * Delete a provider
+ */
+app.delete('/api/providers/:id', (req, res) => {
+  try {
+    const deleted = deleteProvider(req.params.id);
+    if (deleted) {
+      res.json({ success: true, message: 'Provider deleted' });
+    } else {
+      res.status(404).json({ error: 'Provider not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/test
+ * Test a provider connection
+ */
+app.post('/api/providers/:id/test', async (req, res) => {
+  try {
+    const provider = getProvider(req.params.id);
+    if (!provider) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+
+    const result = await testProvider(provider);
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing provider:', error);
+    res.status(500).json({ error: 'Failed to test provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/toggle
+ * Toggle provider active status
+ */
+app.post('/api/providers/:id/toggle', (req, res) => {
+  try {
+    const { isActive } = req.body;
+    const provider = toggleProviderActive(req.params.id, isActive);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error toggling provider:', error);
+    res.status(500).json({ error: 'Failed to toggle provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/priority
+ * Update provider priority
+ */
+app.post('/api/providers/:id/priority', (req, res) => {
+  try {
+    const { priority } = req.body;
+    const provider = setProviderPriority(req.params.id, priority);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error updating priority:', error);
+    res.status(500).json({ error: 'Failed to update priority' });
+  }
+});
+
+/**
+ * GET /api/providers/:id/stats
+ * Get provider usage stats
+ */
+app.get('/api/providers/:id/stats', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const stats = getProviderStats(req.params.id, days);
+    res.json({ days, data: stats });
+  } catch (error) {
+    console.error('Error fetching provider stats:', error);
+    res.status(500).json({ error: 'Failed to fetch provider stats' });
+  }
+});
+
+/**
+ * GET /api/providers/health/check
+ * Run health checks on all active providers
+ */
+app.get('/api/providers/health/check', async (req, res) => {
+  try {
+    const results = await runHealthChecks();
+    res.json({ data: results });
+  } catch (error) {
+    console.error('Error running health checks:', error);
+    res.status(500).json({ error: 'Failed to run health checks' });
+  }
+});
+
+/**
+ * GET /api/providers/fallbacks
+ * Get fallback history
+ */
+app.get('/api/providers/fallbacks', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const history = getFallbackHistory(limit);
+    res.json({ data: history });
+  } catch (error) {
+    console.error('Error fetching fallback history:', error);
+    res.status(500).json({ error: 'Failed to fetch fallback history' });
+  }
+});
+
+/**
+ * GET /api/price/providers
+ * Fetch current price using provider fallback system
+ */
+app.get('/api/price/providers', async (req, res) => {
+  try {
+    const result = await fetchPriceWithFallback();
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(503).json({ error: 'All providers failed', details: result.errors });
+    }
+  } catch (error) {
+    console.error('Error fetching price with fallback:', error);
+    res.status(500).json({ error: 'Failed to fetch price' });
+  }
+});
+
 // Helper functions for technical calculations
 function calculateSMA(data, period) {
   if (data.length < period) return null;
@@ -1543,6 +1779,10 @@ async function pollSwissquote() {
 // Initialize macro tables
 initMacroTables();
 
+// Initialize provider management tables
+initProviderTables();
+seedDefaultProviders();
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 🥇 Gold Fib Signals API Server
@@ -1583,6 +1823,20 @@ Endpoints:
   GET  /api/macro/correlation       - Gold/DXY correlation
   GET  /api/macro/regime            - Macro regime classification
   GET  /api/macro/regime/history    - Historical regime data
+  
+  Data Providers:
+  GET  /api/providers               - List all providers
+  GET  /api/providers/active        - List active providers
+  GET  /api/providers/dashboard     - Provider dashboard
+  GET  /api/providers/:id           - Get provider details
+  POST /api/providers               - Add new provider
+  PUT  /api/providers/:id           - Update provider
+  DELETE /api/providers/:id         - Delete provider
+  POST /api/providers/:id/test      - Test provider connection
+  POST /api/providers/:id/toggle    - Enable/disable provider
+  POST /api/providers/:id/priority  - Set provider priority
+  GET  /api/providers/health/check  - Run health checks
+  GET  /api/price/providers         - Fetch price with fallback
   
   Settings:
   GET  /api/settings                - Get all settings
