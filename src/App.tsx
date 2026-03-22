@@ -16,10 +16,11 @@ import { AnalysisPage } from './pages/AnalysisPage';
 import { PatternsPage } from './pages/PatternsPage';
 import { DonationPage } from './pages/DonationPage';
 import { AdminPage } from './pages/AdminPage';
+import { ProviderManagementPage } from './pages/ProviderManagementPage';
 import { TIMEFRAMES } from './types/products';
 import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart, Heart, ShieldCheck } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate' | 'admin';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate' | 'admin' | 'providers';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -62,7 +63,14 @@ function App() {
   }
 
   if (currentPage === 'admin') {
-    return <AdminPage onBack={() => setCurrentPage('signals')} />;
+    return <AdminPage 
+      onBack={() => setCurrentPage('signals')} 
+      onNavigateToProviders={() => setCurrentPage('providers')}
+    />;
+  }
+
+  if (currentPage === 'providers') {
+    return <ProviderManagementPage onBack={() => setCurrentPage('admin')} />;
   }
 
   return (

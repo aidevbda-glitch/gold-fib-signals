@@ -12,13 +12,21 @@ import {
   Legend,
 } from 'recharts';
 import { format } from 'date-fns';
-import { Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Clock, TrendingUp, TrendingDown, AlertTriangle, Database } from 'lucide-react';
 
 type ViewMode = '1h' | '4h' | '12h' | 'today';
 
 export function IntradayChart() {
-  const { intradayData, currentPrice } = useStore();
+  const { intradayData, currentPrice, activeProviderId } = useStore();
   const [viewMode, setViewMode] = useState<ViewMode>('today');
+
+  // Determine the data provider from the intraday data
+  const dataProvider = intradayData.length > 0 
+    ? (intradayData[0].provider_id || intradayData[0].source || 'unknown')
+    : null;
+  
+  // Check if we're viewing data from a different provider than what's active
+  const hasProviderMismatch = activeProviderId && dataProvider && dataProvider !== activeProviderId;
 
   if (intradayData.length === 0) {
     return (
@@ -90,6 +98,19 @@ export function IntradayChart() {
             {priceChange >= 0 ? <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4" />}
             {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
           </span>
+          {/* Provider Badge */}
+          {dataProvider && (
+            <span 
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                hasProviderMismatch 
+                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' 
+                  : 'bg-gray-700 text-gray-400'
+              }`}
+              title={hasProviderMismatch ? 'Data from different provider than currently active' : 'Data source provider'}
+            >
+              {dataProvider}
+            </span>
+          )}
         </div>
         
         {/* View Mode Selector */}
@@ -109,6 +130,19 @@ export function IntradayChart() {
           ))}
         </div>
       </div>
+
+      {/* Provider Mismatch Warning */}
+      {hasProviderMismatch && (
+        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+          <div className="flex items-center gap-2 text-yellow-400 text-xs sm:text-sm">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>
+              Viewing data from <strong>{dataProvider}</strong> but active provider is <strong>{activeProviderId}</strong>. 
+              Intraday spreads may vary between providers.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Stats Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4 text-xs sm:text-sm">
@@ -236,7 +270,14 @@ export function IntradayChart() {
       {/* Footer */}
       <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
         <span>{filteredData.length} data points</span>
-        <span>Source: Swissquote • Updated every minute</span>
+        <div className="flex items-center gap-2">
+          <Database className="w-3 h-3" />
+          <span>
+            Source: {dataProvider || 'Swissquote'}
+            {activeProviderId && ` (filtered: ${activeProviderId})`}
+            {' • Updated every minute'}
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -10,6 +10,9 @@
 
 import db from './database.js';
 
+// Pending fallback promise for request deduplication
+let pendingFallbackPromise = null;
+
 // Default providers configuration
 export const DEFAULT_PROVIDERS = [
   {
@@ -402,7 +405,9 @@ export function toggleProviderActive(id, isActive) {
  */
 export async function testProvider(provider) {
   const startTime = Date.now();
-  
+  const controller = new AbortController();
+  let timeoutId = null;
+
   try {
     const headers = {
       'Accept': 'application/json',
@@ -413,16 +418,13 @@ export async function testProvider(provider) {
       headers[provider.apiKeyHeader || 'Authorization'] = provider.apiKey;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), provider.timeoutMs || 5000);
+    timeoutId = setTimeout(() => controller.abort(), provider.timeoutMs || 5000);
 
     const response = await fetch(provider.endpoint, {
       method: provider.requestType || 'GET',
       headers,
       signal: controller.signal
     });
-
-    clearTimeout(timeoutId);
 
     const responseTime = Date.now() - startTime;
 
@@ -459,18 +461,31 @@ export async function testProvider(provider) {
       responseTime: Date.now() - startTime,
       error: error.message
     };
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
 /**
  * Extract value from nested object using dot notation path
+ * @param {Object} obj - The object to extract from
+ * @param {string} path - The path to the value (required)
+ * @returns {any} The extracted value or null if not found
+ * @throws {Error} If obj is null or path is not provided
  */
 function extractValueFromPath(obj, path) {
-  if (!path) return null;
+  if (obj === null || obj === undefined) {
+    throw new Error('extractValueFromPath: obj parameter is required and cannot be null');
+  }
+  if (!path) {
+    throw new Error('extractValueFromPath: path parameter is required');
+  }
 
   // Handle array index notation like "[-1].price" or "result[0].price"
   const parts = path.match(/[^.\[\]]+|\[\d+\]|\[-\d+\]/g) || [];
-  
+
   let current = obj;
   for (const part of parts) {
     if (current === null || current === undefined) return null;
@@ -576,45 +591,62 @@ export function recordProviderRequest(providerId, success, responseTimeMs, error
 
 /**
  * Fetch price from provider with fallback
+ * Uses request deduplication to prevent concurrent duplicate requests
  */
 export async function fetchPriceWithFallback() {
-  const providers = getActiveProviders();
-  const errors = [];
-
-  for (const provider of providers) {
-    const startTime = Date.now();
-    
-    try {
-      const result = await fetchFromProvider(provider);
-      const responseTime = Date.now() - startTime;
-
-      // Record successful request
-      recordProviderRequest(provider.id, true, responseTime);
-
-      // Log fallback if this wasn't the first provider
-      if (errors.length > 0) {
-        logFallback(errors[errors.length - 1].providerId, provider.id, errors[errors.length - 1].error);
-      }
-
-      return {
-        success: true,
-        provider: provider.id,
-        providerName: provider.name,
-        ...result
-      };
-
-    } catch (error) {
-      const responseTime = Date.now() - startTime;
-      recordProviderRequest(provider.id, false, responseTime, error.message);
-      errors.push({ providerId: provider.id, error: error.message });
-    }
+  // Return existing promise if there's a pending request (deduplication)
+  if (pendingFallbackPromise) {
+    return pendingFallbackPromise;
   }
 
-  // All providers failed
-  return {
-    success: false,
-    errors: errors.map(e => `${e.providerId}: ${e.error}`).join('; ')
-  };
+  // Create new promise for this request
+  pendingFallbackPromise = (async () => {
+    const providers = getActiveProviders();
+    const errors = [];
+
+    for (const provider of providers) {
+      const startTime = Date.now();
+
+      try {
+        const result = await fetchFromProvider(provider);
+        const responseTime = Date.now() - startTime;
+
+        // Record successful request
+        recordProviderRequest(provider.id, true, responseTime);
+
+        // Log fallback if this wasn't the first provider
+        if (errors.length > 0) {
+          logFallback(errors[errors.length - 1].providerId, provider.id, errors[errors.length - 1].error);
+        }
+
+        return {
+          success: true,
+          provider: provider.id,
+          providerName: provider.name,
+          ...result
+        };
+
+      } catch (error) {
+        const responseTime = Date.now() - startTime;
+        recordProviderRequest(provider.id, false, responseTime, error.message);
+        errors.push({ providerId: provider.id, error: error.message });
+      }
+    }
+
+    // All providers failed
+    return {
+      success: false,
+      errors: errors.map(e => `${e.providerId}: ${e.error}`).join('; ')
+    };
+  })();
+
+  // Clear the pending promise when done (success or failure)
+  try {
+    const result = await pendingFallbackPromise;
+    return result;
+  } finally {
+    pendingFallbackPromise = null;
+  }
 }
 
 /**
@@ -631,16 +663,16 @@ async function fetchFromProvider(provider) {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), provider.timeoutMs || 5000);
+  let timeoutId = null;
 
   try {
+    timeoutId = setTimeout(() => controller.abort(), provider.timeoutMs || 5000);
+
     const response = await fetch(provider.endpoint, {
       method: provider.requestType || 'GET',
       headers,
       signal: controller.signal
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -659,9 +691,9 @@ async function fetchFromProvider(provider) {
           source: provider.name
         };
 
-      case 'swissquote':
+      case 'swissquote': {
         const quote = data[0];
-        const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium') 
+        const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium')
           || quote.spreadProfilePrices[0];
         return {
           price: (prices.bid + prices.ask) / 2,
@@ -670,8 +702,9 @@ async function fetchFromProvider(provider) {
           timestamp: quote.ts || Date.now(),
           source: provider.name
         };
+      }
 
-      case 'yahoo-finance':
+      case 'yahoo-finance': {
         const meta = data.chart.result[0].meta;
         const currentPrice = meta.regularMarketPrice || data.chart.result[0].indicators.quote[0].close.slice(-1)[0];
         return {
@@ -681,8 +714,9 @@ async function fetchFromProvider(provider) {
           timestamp: Date.now(),
           source: provider.name
         };
+      }
 
-      case 'freegoldapi':
+      case 'freegoldapi': {
         const latest = data[data.length - 1];
         return {
           price: latest.price,
@@ -691,8 +725,9 @@ async function fetchFromProvider(provider) {
           timestamp: new Date(latest.date).getTime(),
           source: provider.name
         };
+      }
 
-      default:
+      default: {
         // Generic parsing using response format paths
         return {
           price: extractValueFromPath(data, provider.responseFormat?.pricePath),
@@ -701,11 +736,13 @@ async function fetchFromProvider(provider) {
           timestamp: Date.now(),
           source: provider.name
         };
+      }
     }
 
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 

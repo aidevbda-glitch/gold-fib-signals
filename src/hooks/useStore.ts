@@ -18,9 +18,13 @@ interface StoreActions {
   loadSignalsFromBackend: () => Promise<void>;
   saveSignalToBackend: (signal: TradingSignal) => Promise<void>;
   setSelectedRange: (range: string) => void;
+  setActiveProviderId: (providerId: string | null) => void;
 }
 
 type Store = AppState & StoreActions;
+
+// Module-level interval tracking to prevent double-start
+let activeIntervals: { price?: ReturnType<typeof setInterval>; intraday?: ReturnType<typeof setInterval> } = {};
 
 export const useStore = create<Store>((set, get) => ({
   // Initial state
@@ -33,14 +37,21 @@ export const useStore = create<Store>((set, get) => ({
   error: null,
   lastUpdate: null,
   selectedRange: '1mo',
+  activeProviderId: null as string | null,
+  intervalsActive: false,
 
   // Actions
   fetchCurrentPrice: async () => {
     try {
       const quote = await GoldPriceService.simulateTick();
+      
+      // CRITICAL: Use the actual timestamp from the price source (Swissquote)
+      // NOT Date.now() - this was causing timestamp gaps and confusion
+      const priceTimestamp = quote.timestamp || Date.now();
+      
       set({ 
         currentPrice: quote, 
-        lastUpdate: Date.now(),
+        lastUpdate: priceTimestamp,
         error: null 
       });
       
@@ -77,7 +88,15 @@ export const useStore = create<Store>((set, get) => ({
   fetchIntradayData: async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const response = await fetch(`${API_BASE}/price/intraday?start=${today}&end=${today}`);
+      const { activeProviderId } = get();
+      
+      // Build query params, including providerId if set
+      let url = `${API_BASE}/price/intraday?start=${today}&end=${today}`;
+      if (activeProviderId) {
+        url += `&providerId=${encodeURIComponent(activeProviderId)}`;
+      }
+      
+      const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
         set({ intradayData: result.data || [] });
@@ -85,6 +104,12 @@ export const useStore = create<Store>((set, get) => ({
     } catch (error) {
       console.warn('Failed to fetch intraday data:', error);
     }
+  },
+
+  setActiveProviderId: (providerId: string | null) => {
+    set({ activeProviderId: providerId });
+    // Refetch intraday data with new provider filter
+    get().fetchIntradayData();
   },
 
   setSelectedRange: (range: string) => {
@@ -191,6 +216,17 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   startRealTimeUpdates: () => {
+    const state = get();
+
+    // Prevent double-start if intervals are already active
+    if (state.intervalsActive || activeIntervals.price || activeIntervals.intraday) {
+      console.log('⚠️ Real-time updates already running, skipping start');
+      return () => {}; // Return no-op cleanup
+    }
+
+    // Mark intervals as active
+    set({ intervalsActive: true });
+
     // Check backend availability
     GoldPriceService.checkBackend().then((available) => {
       if (available) {
@@ -207,18 +243,27 @@ export const useStore = create<Store>((set, get) => ({
     get().fetchIntradayData();
 
     // Update price every 5 seconds
-    const priceInterval = setInterval(() => {
+    activeIntervals.price = setInterval(() => {
       get().fetchCurrentPrice();
     }, 5000);
 
     // Update intraday data every 30 seconds
-    const intradayInterval = setInterval(() => {
+    activeIntervals.intraday = setInterval(() => {
       get().fetchIntradayData();
     }, 30000);
 
+    // Return cleanup function
     return () => {
-      clearInterval(priceInterval);
-      clearInterval(intradayInterval);
+      if (activeIntervals.price) {
+        clearInterval(activeIntervals.price);
+        activeIntervals.price = undefined;
+      }
+      if (activeIntervals.intraday) {
+        clearInterval(activeIntervals.intraday);
+        activeIntervals.intraday = undefined;
+      }
+      set({ intervalsActive: false });
+      console.log('✅ Real-time updates stopped');
     };
   },
 

@@ -102,8 +102,24 @@ export function PriceDisplay() {
 
       {lastUpdate && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 text-xs text-gray-500 gap-1 sm:gap-0">
-          <span>Last updated: {new Date(lastUpdate).toLocaleTimeString()}</span>
-          <span>Live data from Swissquote forex feed</span>
+          <div className="flex items-center gap-2">
+            <span>Data timestamp: {new Date(lastUpdate).toLocaleTimeString()}</span>
+            <span className="text-gray-600">|</span>
+            <span>Refreshed: {new Date().toLocaleTimeString()}</span>
+          </div>
+          <span className={
+            currentPrice.source?.includes('Mock') || currentPrice.source?.includes('cached')
+              ? 'text-orange-400' 
+              : currentPrice.source?.includes('after-hours')
+              ? 'text-yellow-400'
+              : 'text-green-400'
+          }>
+            {currentPrice.source?.includes('Mock') || currentPrice.source?.includes('cached')
+              ? '⚠️ Using cached/mock data' 
+              : currentPrice.source?.includes('after-hours')
+              ? '⏸️ After-hours/Weekend data'
+              : '✓ Live from Swissquote'}
+          </span>
         </div>
       )}
     </div>

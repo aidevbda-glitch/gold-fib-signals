@@ -100,9 +100,39 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Input validation helper functions
+function parsePositiveInt(value, defaultValue, maxValue = Infinity) {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed <= 0) return defaultValue;
+  return Math.min(parsed, maxValue);
+}
+
+function validateDateString(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  // Validate YYYY-MM-DD format
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(dateStr)) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return dateStr;
+}
+
+function validateProviderId(providerId) {
+  if (!providerId || typeof providerId !== 'string') return null;
+  // Allow alphanumeric, hyphens, and underscores only
+  const regex = /^[a-zA-Z0-9_-]+$/;
+  if (!regex.test(providerId)) return null;
+  return providerId;
+}
+
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  try {
+    res.json({ status: 'ok', timestamp: Date.now() });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ error: 'Health check failed' });
+  }
 });
 
 // ==================== PRICE ENDPOINTS ====================
@@ -194,8 +224,8 @@ app.post('/api/price/refresh', async (req, res) => {
  */
 app.get('/api/price/cached', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 365;
-    const history = getPriceHistory(Math.min(days, 1095)); // Max 3 years
+    const days = parsePositiveInt(req.query.days, 365, 1095); // Max 3 years
+    const history = getPriceHistory(days);
     res.json({
       days,
       count: history.length,
@@ -210,18 +240,20 @@ app.get('/api/price/cached', (req, res) => {
 /**
  * GET /api/price/intraday
  * Get intraday Swissquote tick data
- * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD)
+ * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD), providerId (optional)
  */
 app.get('/api/price/intraday', (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const start = req.query.start || today;
-    const end = req.query.end || today;
+    const start = validateDateString(req.query.start) || today;
+    const end = validateDateString(req.query.end) || today;
+    const providerId = validateProviderId(req.query.providerId); // Optional provider filter
 
-    const ticks = getIntradayTicks(start, end);
+    const ticks = getIntradayTicks(start, end, providerId);
     res.json({
       start,
       end,
+      providerId,
       count: ticks.length,
       data: ticks
     });
@@ -241,9 +273,9 @@ app.get('/api/price/daily-aggregates', (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString().split('T')[0];
-    
-    const start = req.query.start || thirtyDaysAgo;
-    const end = req.query.end || today;
+
+    const start = validateDateString(req.query.start) || thirtyDaysAgo;
+    const end = validateDateString(req.query.end) || today;
 
     const aggregates = getDailyAggregates(start, end);
     res.json({
@@ -265,16 +297,16 @@ app.get('/api/price/daily-aggregates', (req, res) => {
  */
 app.get('/api/price/accuracy', (req, res) => {
   try {
-    const date = req.query.date;
+    const date = validateDateString(req.query.date);
     if (!date) {
       return res.status(400).json({ error: 'Date parameter required (YYYY-MM-DD)' });
     }
 
     const comparison = getAccuracyComparison(date);
     if (!comparison) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'No data available for comparison on this date',
-        date 
+        date
       });
     }
 
@@ -292,8 +324,8 @@ app.get('/api/price/accuracy', (req, res) => {
  */
 app.get('/api/price/database', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 365;
-    const history = getHistoryFromDatabase(Math.min(days, 1095));
+    const days = parsePositiveInt(req.query.days, 365, 1095); // Max 3 years
+    const history = getHistoryFromDatabase(days);
     res.json({
       days,
       count: history.length,
@@ -339,8 +371,8 @@ app.post('/api/signals', (req, res) => {
  */
 app.get('/api/signals', (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
+    const limit = parsePositiveInt(req.query.limit, 50, 200); // Max 200
+    const offset = parsePositiveInt(req.query.offset, 0);
     const type = req.query.type?.toUpperCase();
 
     if (type && !['BUY', 'SELL'].includes(type)) {
@@ -398,8 +430,13 @@ app.get('/api/signals/stats', (req, res) => {
  */
 app.get('/api/signals/range', (req, res) => {
   try {
-    const start = parseInt(req.query.start) || (Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = parseInt(req.query.end) || Date.now();
+    const start = parsePositiveInt(req.query.start, Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = parsePositiveInt(req.query.end, Date.now());
+
+    // Validate that end >= start
+    if (end < start) {
+      return res.status(400).json({ error: 'End timestamp must be >= start timestamp' });
+    }
 
     const signals = getSignalsByDateRange(start, end);
     res.json({
@@ -729,14 +766,19 @@ app.get('/api/polling/stats', (req, res) => {
  * Get polling configuration
  */
 app.get('/api/polling/config', (req, res) => {
-  const intervalMs = parseInt(process.env.POLL_INTERVAL_MS) || 60000;
-  res.json({
-    enabled: true,
-    intervalMs,
-    intervalSeconds: intervalMs / 1000,
-    source: 'Swissquote',
-    retention: '1 year'
-  });
+  try {
+    const intervalMs = parsePositiveInt(process.env.POLL_INTERVAL_MS, 60000);
+    res.json({
+      enabled: true,
+      intervalMs,
+      intervalSeconds: intervalMs / 1000,
+      source: 'Swissquote',
+      retention: '1 year'
+    });
+  } catch (error) {
+    console.error('Error fetching polling config:', error);
+    res.status(500).json({ error: 'Failed to fetch polling configuration' });
+  }
 });
 
 // ==================== MACRO ANALYSIS ENDPOINTS ====================
@@ -1004,7 +1046,7 @@ app.get('/api/macro/dxy', async (req, res) => {
  */
 app.get('/api/macro/correlation', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 20;
+    const days = parsePositiveInt(req.query.days, 20, 365); // Max 1 year
     const correlation = calculateGoldDXYCorrelation(days);
     res.json({
       days,
@@ -1043,7 +1085,7 @@ app.get('/api/macro/regime', async (req, res) => {
  */
 app.get('/api/macro/regime/history', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 30;
+    const days = parsePositiveInt(req.query.days, 30, 365); // Max 1 year
     const history = getRegimeHistory(days);
     res.json({
       days,
@@ -1263,7 +1305,7 @@ app.post('/api/providers/:id/priority', (req, res) => {
  */
 app.get('/api/providers/:id/stats', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 7;
+    const days = parsePositiveInt(req.query.days, 7, 365); // Max 1 year
     const stats = getProviderStats(req.params.id, days);
     res.json({ days, data: stats });
   } catch (error) {
@@ -1292,7 +1334,7 @@ app.get('/api/providers/health/check', async (req, res) => {
  */
 app.get('/api/providers/fallbacks', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = parsePositiveInt(req.query.limit, 50, 500); // Max 500
     const history = getFallbackHistory(limit);
     res.json({ data: history });
   } catch (error) {
@@ -1419,7 +1461,7 @@ app.get('/api/donations/stats', (req, res) => {
  */
 app.get('/api/donations/recent', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parsePositiveInt(req.query.limit, 10, 100); // Max 100
     const donations = getRecentDonations(limit);
     res.json({ data: donations });
   } catch (error) {
@@ -1434,7 +1476,7 @@ app.get('/api/donations/recent', (req, res) => {
  */
 app.get('/api/donations/top', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parsePositiveInt(req.query.limit, 10, 100); // Max 100
     const donors = getTopDonors(limit);
     res.json({ data: donors });
   } catch (error) {
@@ -1580,11 +1622,16 @@ app.post('/api/admin/verify-mfa', async (req, res) => {
  * Logout and invalidate session
  */
 app.post('/api/admin/logout', (req, res) => {
-  const sessionId = req.headers['x-admin-session'];
-  if (sessionId) {
-    invalidateSession(sessionId);
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    if (sessionId) {
+      invalidateSession(sessionId);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
   }
-  res.json({ success: true });
 });
 
 /**
@@ -1592,17 +1639,22 @@ app.post('/api/admin/logout', (req, res) => {
  * Get admin account status
  */
 app.get('/api/admin/status', (req, res) => {
-  const sessionId = req.headers['x-admin-session'];
-  const session = verifySession(sessionId);
-  const status = getAdminStatus();
-  
-  res.json({
-    data: {
-      ...status,
-      isLoggedIn: session.valid,
-      mfaVerified: session.mfaVerified
-    }
-  });
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    const session = verifySession(sessionId);
+    const status = getAdminStatus();
+
+    res.json({
+      data: {
+        ...status,
+        isLoggedIn: session.valid,
+        mfaVerified: session.mfaVerified
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin status:', error);
+    res.status(500).json({ error: 'Failed to fetch admin status' });
+  }
 });
 
 /**

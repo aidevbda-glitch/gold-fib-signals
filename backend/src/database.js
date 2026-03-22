@@ -21,6 +21,9 @@ db.pragma('journal_mode = WAL');
 db.exec(`
   -- Historical daily price data (from FreeGoldAPI)
   -- Used as reference for charts
+  -- NOTE: This table contains daily aggregated data from FreeGoldAPI.
+  -- It is NOT provider-specific and is used for historical chart reference.
+  -- For provider-specific intraday data, see intraday_ticks table.
   CREATE TABLE IF NOT EXISTS price_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp INTEGER NOT NULL UNIQUE,
@@ -44,11 +47,15 @@ db.exec(`
     mid REAL NOT NULL,
     spread REAL NOT NULL,
     source TEXT DEFAULT 'swissquote',
+    provider_id TEXT DEFAULT 'swissquote',  -- Provider identifier for filtering
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   -- Daily aggregated data from Swissquote intraday ticks
   -- One row per day with bid/ask high/low tracking
+  -- NOTE: While aggregates are computed from intraday_ticks (which can be filtered by provider),
+  -- this table stores the overall daily OHLC values. The source column indicates which provider
+  -- contributed the most recent tick for this aggregate.
   CREATE TABLE IF NOT EXISTS daily_aggregates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL UNIQUE,  -- YYYY-MM-DD format
@@ -104,6 +111,7 @@ db.exec(`
   -- Indexes for faster queries
   CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
   CREATE INDEX IF NOT EXISTS idx_intraday_ticks_timestamp ON intraday_ticks(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_intraday_ticks_provider_id ON intraday_ticks(provider_id);
   CREATE INDEX IF NOT EXISTS idx_daily_aggregates_date ON daily_aggregates(date);
   CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp);
   CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(type);

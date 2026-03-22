@@ -19,40 +19,180 @@ const FREEGOLDAPI_URL = 'https://freegoldapi.com/data/latest.json';
 const YAHOO_FINANCE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const GOLD_SYMBOL = 'GC=F';
 
+// Maximum allowed future timestamp skew (60 seconds to account for clock drift)
+const MAX_FUTURE_SKEW_MS = 60000;
+
+// Maximum allowed age of price data (5 minutes) - reject stale API responses
+const MAX_PRICE_AGE_MS = 5 * 60 * 1000;
+
+// Minimum timestamp difference to consider data "new" (handles API timestamp jitter)
+const TIMESTAMP_JITTER_TOLERANCE_MS = 100;
+
+// Track the latest timestamp we've seen to prevent price reversion
+let latestTimestamp = 0;
+let latestPriceData = null;
+
+/**
+ * Get the latest known price data (with timestamp tracking)
+ */
+export function getLatestPriceData() {
+  return latestPriceData;
+}
+
+/**
+ * Check if price data is fresh (not too old)
+ * Returns true if data is within acceptable age limits
+ */
+function isPriceDataFresh(priceData) {
+  if (!priceData || !priceData.timestamp) {
+    return false;
+  }
+
+  const now = Date.now();
+
+  // Reject future timestamps
+  if (priceData.timestamp > now + MAX_FUTURE_SKEW_MS) {
+    return false;
+  }
+
+  // Reject old timestamps
+  const ageMs = now - priceData.timestamp;
+  if (ageMs > MAX_PRICE_AGE_MS) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Update latest price data if the new data is fresher
+ * Returns true if the data was updated, false if it was stale
+ */
+function updateLatestPriceData(priceData) {
+  if (!priceData || !priceData.timestamp) {
+    return false;
+  }
+
+  const now = Date.now();
+
+  // Reject future timestamps (with small allowance for clock skew)
+  if (priceData.timestamp > now + MAX_FUTURE_SKEW_MS) {
+    console.warn(`Rejecting future timestamp: ts=${priceData.timestamp} (now=${now}, diff=${priceData.timestamp - now}ms)`);
+    return false;
+  }
+
+  // Reject zero or negative timestamps
+  if (priceData.timestamp <= 0) {
+    console.warn(`Rejecting invalid timestamp: ts=${priceData.timestamp}`);
+    return false;
+  }
+
+  // Reject timestamps that are too old (API returning stale cached data)
+  const ageMs = now - priceData.timestamp;
+  if (ageMs > MAX_PRICE_AGE_MS) {
+    console.warn(`Rejecting old price data: ts=${priceData.timestamp} (age=${Math.round(ageMs / 1000)}s, max=${MAX_PRICE_AGE_MS / 1000}s)`);
+    return false;
+  }
+
+  // Only update if this data is fresher than what we have (with jitter tolerance)
+  // Some APIs (like Swissquote) have timestamp jitter of a few ms between identical quotes
+  if (priceData.timestamp >= latestTimestamp - TIMESTAMP_JITTER_TOLERANCE_MS) {
+    latestTimestamp = Math.max(latestTimestamp, priceData.timestamp);
+    latestPriceData = priceData;
+    return true;
+  }
+
+  console.warn(`Rejecting stale price data: ts=${priceData.timestamp} vs latest=${latestTimestamp}`);
+  return false;
+}
+
 /**
  * Fetch current price from Swissquote (primary source)
  * Saves tick to database for intraday tracking
+ * 
+ * CRITICAL: Always uses Swissquote's ts timestamp, never Date.now()
+ * Prevents price reversion by tracking latest timestamp across all sources
  */
 export async function fetchCurrentPrice() {
+  let swissquotePrice = null;
+  let yahooPrice = null;
+  let cachedPrice = null;
+
+  // Try Swissquote first (primary source with trusted timestamp)
   try {
-    const swissquotePrice = await fetchFromSwissquote();
+    swissquotePrice = await fetchFromSwissquote();
     if (swissquotePrice) {
-      // Save to intraday tracking
-      saveIntradayTick(swissquotePrice);
-      updateDailyAggregate(swissquotePrice);
+      // On weekends/after-hours, Swissquote returns last known price with old timestamp
+      // We should still accept and use this data, just mark it accordingly
+      const isFresh = isPriceDataFresh(swissquotePrice);
+      
+      if (!isFresh) {
+        console.log('Swissquote timestamp is old (weekend/after-hours), accepting price anyway');
+        // Mark as after-hours data but still use it
+        swissquotePrice.source = 'Swissquote (after-hours)';
+      }
+      
+      // Save to intraday tracking with provider_id
+      saveIntradayTick(swissquotePrice, 'swissquote');
+      updateDailyAggregate(swissquotePrice, 'swissquote');
       saveCurrentPrice(swissquotePrice);
+      
+      // Update our latest tracking
+      updateLatestPriceData(swissquotePrice);
       return swissquotePrice;
     }
   } catch (error) {
     console.error('Swissquote fetch failed:', error.message);
   }
 
-  // Fallback to Yahoo Finance
+  // Fallback to Yahoo Finance only if we don't have recent Swissquote data
   try {
-    const yahooPrice = await fetchFromYahooFinance();
+    yahooPrice = await fetchFromYahooFinance();
     if (yahooPrice) {
-      saveCurrentPrice(yahooPrice);
-      return yahooPrice;
+      // Accept Yahoo data even if timestamp is old (weekend/after-hours)
+      const isFresh = isPriceDataFresh(yahooPrice);
+      
+      if (!isFresh) {
+        console.log('Yahoo Finance timestamp is old (weekend/after-hours), accepting price anyway');
+        yahooPrice.source = 'Yahoo Finance (after-hours)';
+      }
+      
+      // Only use Yahoo if it's fresher than what we have
+      if (updateLatestPriceData(yahooPrice)) {
+        saveCurrentPrice(yahooPrice);
+        return yahooPrice;
+      }
     }
   } catch (error) {
     console.error('Yahoo Finance fetch failed:', error.message);
   }
 
-  return getLastSavedPrice();
+  // Last resort: cached data from database
+  cachedPrice = getLastSavedPrice();
+  if (cachedPrice) {
+    // Only return cached if we have nothing else
+    if (!latestPriceData) {
+      updateLatestPriceData(cachedPrice);
+      return cachedPrice;
+    }
+    
+    // Return the fresher of cached vs latest known
+    if (cachedPrice.timestamp >= latestTimestamp) {
+      updateLatestPriceData(cachedPrice);
+      return cachedPrice;
+    }
+  }
+
+  // Return the latest known good data (even if stale) rather than null
+  return latestPriceData;
 }
 
 /**
  * Fetch from Swissquote forex data feed
+ * 
+ * CRITICAL: Always uses Swissquote's ts timestamp from the response.
+ * The ts field is the authoritative timestamp from Swissquote.
+ * Never falls back to Date.now() as that causes timestamp gaps.
  */
 async function fetchFromSwissquote() {
   console.log('🔄 Fetching from Swissquote...');
@@ -75,10 +215,25 @@ async function fetchFromSwissquote() {
   }
 
   const quote = data[0];
-  const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium') 
+
+  // Validate spreadProfilePrices exists and is non-empty
+  if (!quote.spreadProfilePrices || !Array.isArray(quote.spreadProfilePrices) || quote.spreadProfilePrices.length === 0) {
+    throw new Error('Invalid Swissquote response: spreadProfilePrices missing or empty');
+  }
+
+  const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium')
     || quote.spreadProfilePrices[0];
 
-  console.log('✅ Swissquote price received:', prices.bid, '/', prices.ask);
+  // CRITICAL: Use Swissquote's timestamp. If missing, this is an error condition.
+  // Do NOT fall back to Date.now() as that causes the flashing/reversion bug.
+  const swissquoteTimestamp = quote.ts;
+  if (!swissquoteTimestamp) {
+    throw new Error('Swissquote response missing ts timestamp');
+  }
+
+  const timestamp = swissquoteTimestamp;
+
+  console.log('✅ Swissquote price received:', prices.bid, '/', prices.ask, 'ts:', timestamp);
 
   const stats24h = get24hStats();
 
@@ -90,13 +245,16 @@ async function fetchFromSwissquote() {
     low24h: stats24h.low || prices.bid,
     change24h: stats24h.change || 0,
     changePercent24h: stats24h.changePercent || 0,
-    timestamp: quote.ts || Date.now(),
+    timestamp: timestamp,
     source: 'Swissquote',
   };
 }
 
 /**
  * Fetch from Yahoo Finance (backup)
+ * 
+ * Uses the actual timestamp from Yahoo's data, not Date.now()
+ * to ensure proper timestamp ordering with Swissquote data.
  */
 async function fetchFromYahooFinance() {
   console.log('🔄 Fetching from Yahoo Finance...');
@@ -120,6 +278,13 @@ async function fetchFromYahooFinance() {
 
   const currentPrice = meta.regularMarketPrice || quote.close[lastIndex];
   const previousClose = meta.previousClose || quote.close[lastIndex - 1];
+  
+  // Use Yahoo's actual timestamp (converted from seconds to ms if needed)
+  // Yahoo timestamps are in seconds, Swissquote are in milliseconds
+  let yahooTimestamp = result.timestamp[lastIndex];
+  if (yahooTimestamp && yahooTimestamp < 1000000000000) {
+    yahooTimestamp = yahooTimestamp * 1000; // Convert seconds to milliseconds
+  }
 
   return {
     price: currentPrice,
@@ -129,7 +294,7 @@ async function fetchFromYahooFinance() {
     low24h: Math.min(...quote.low.filter(l => l != null).slice(-2)),
     change24h: currentPrice - previousClose,
     changePercent24h: ((currentPrice - previousClose) / previousClose) * 100,
-    timestamp: Date.now(),
+    timestamp: yahooTimestamp || Date.now(),
     source: 'Yahoo Finance',
   };
 }
@@ -137,85 +302,102 @@ async function fetchFromYahooFinance() {
 /**
  * Save intraday tick to database (Swissquote data)
  * Retained for up to 1 year for accuracy analysis
+ *
+ * @param {Object} priceData - Price data to save
+ * @param {string} providerId - Provider identifier (e.g., 'swissquote', 'goldapi', etc.)
  */
-function saveIntradayTick(priceData) {
+function saveIntradayTick(priceData, providerId = 'swissquote') {
   const stmt = db.prepare(`
-    INSERT INTO intraday_ticks (timestamp, bid, ask, mid, spread, source)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO intraday_ticks (timestamp, bid, ask, mid, spread, source, provider_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const mid = (priceData.bid + priceData.ask) / 2;
   const spread = priceData.ask - priceData.bid;
 
+  // Use current time for intraday tick timestamp (not the price data timestamp)
+  // This ensures ticks show up in today's intraday chart even when
+  // the provider's timestamp is old (weekend/after-hours)
+  const tickTimestamp = Date.now();
+
   stmt.run(
-    priceData.timestamp,
+    tickTimestamp,
     priceData.bid,
     priceData.ask,
     mid,
     spread,
-    priceData.source || 'swissquote'
+    priceData.source || providerId,
+    providerId
   );
-
-  // Cleanup: Remove ticks older than 1 year
-  const oneYearAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
-  db.prepare('DELETE FROM intraday_ticks WHERE timestamp < ?').run(oneYearAgo);
+  // Note: Cleanup is handled by scheduled maintenance, not inline
 }
 
 /**
  * Update or create daily aggregate from Swissquote tick
+ *
+ * @param {Object} priceData - Price data to aggregate
+ * @param {string} providerId - Provider identifier for tracking
  */
-function updateDailyAggregate(priceData) {
+function updateDailyAggregate(priceData, providerId = 'swissquote') {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const mid = (priceData.bid + priceData.ask) / 2;
 
-  // Check if today's aggregate exists
-  const existing = db.prepare('SELECT * FROM daily_aggregates WHERE date = ?').get(today);
+  // Use transaction for atomicity
+  const updateAggregate = db.transaction(() => {
+    // Check if today's aggregate exists
+    const existing = db.prepare('SELECT * FROM daily_aggregates WHERE date = ?').get(today);
 
-  if (existing) {
-    // Update existing aggregate
-    const stmt = db.prepare(`
-      UPDATE daily_aggregates SET
-        bid_high = MAX(bid_high, ?),
-        bid_low = MIN(bid_low, ?),
-        bid_close = ?,
-        ask_high = MAX(ask_high, ?),
-        ask_low = MIN(ask_low, ?),
-        ask_close = ?,
-        mid_high = MAX(mid_high, ?),
-        mid_low = MIN(mid_low, ?),
-        mid_close = ?,
-        tick_count = tick_count + 1,
-        last_tick_at = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE date = ?
-    `);
+    if (existing) {
+      // Update existing aggregate
+      const stmt = db.prepare(`
+        UPDATE daily_aggregates SET
+          bid_high = MAX(bid_high, ?),
+          bid_low = MIN(bid_low, ?),
+          bid_close = ?,
+          ask_high = MAX(ask_high, ?),
+          ask_low = MIN(ask_low, ?),
+          ask_close = ?,
+          mid_high = MAX(mid_high, ?),
+          mid_low = MIN(mid_low, ?),
+          mid_close = ?,
+          tick_count = tick_count + 1,
+          last_tick_at = ?,
+          source = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE date = ?
+      `);
 
-    stmt.run(
-      priceData.bid, priceData.bid, priceData.bid,
-      priceData.ask, priceData.ask, priceData.ask,
-      mid, mid, mid,
-      priceData.timestamp,
-      today
-    );
-  } else {
-    // Create new aggregate for today
-    const stmt = db.prepare(`
-      INSERT INTO daily_aggregates (
-        date, bid_open, bid_high, bid_low, bid_close,
-        ask_open, ask_high, ask_low, ask_close,
-        mid_open, mid_high, mid_low, mid_close,
-        tick_count, first_tick_at, last_tick_at, source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'swissquote')
-    `);
+      stmt.run(
+        priceData.bid, priceData.bid, priceData.bid,
+        priceData.ask, priceData.ask, priceData.ask,
+        mid, mid, mid,
+        priceData.timestamp,
+        providerId,
+        today
+      );
+    } else {
+      // Create new aggregate for today
+      const stmt = db.prepare(`
+        INSERT INTO daily_aggregates (
+          date, bid_open, bid_high, bid_low, bid_close,
+          ask_open, ask_high, ask_low, ask_close,
+          mid_open, mid_high, mid_low, mid_close,
+          tick_count, first_tick_at, last_tick_at, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `);
 
-    stmt.run(
-      today,
-      priceData.bid, priceData.bid, priceData.bid, priceData.bid,
-      priceData.ask, priceData.ask, priceData.ask, priceData.ask,
-      mid, mid, mid, mid,
-      priceData.timestamp, priceData.timestamp
-    );
-  }
+      stmt.run(
+        today,
+        priceData.bid, priceData.bid, priceData.bid, priceData.bid,
+        priceData.ask, priceData.ask, priceData.ask, priceData.ask,
+        mid, mid, mid, mid,
+        priceData.timestamp, priceData.timestamp,
+        providerId
+      );
+    }
+  });
+
+  updateAggregate();
 }
 
 /**
@@ -276,11 +458,98 @@ export async function fetchHistoricalData(range = '1y', _interval = '1d') {
     // Save to database
     savePriceHistory(candles);
 
+    // Try to fill any gaps with Yahoo Finance data
+    await fetchYahooFinanceHistorical(range);
+
     return candles;
   } catch (error) {
     console.error('FreeGoldAPI fetch failed:', error.message);
     return getCachedHistory(range);
   }
+}
+
+/**
+ * Fetch historical data from Yahoo Finance to fill gaps
+ * Complements FreeGoldAPI data for more complete history
+ */
+async function fetchYahooFinanceHistorical(range = '1y') {
+  console.log(`🔄 Fetching historical data (${range}) from Yahoo Finance...`);
+  
+  try {
+    const rangeParam = range === '1y' ? '1y' : range === '5y' ? '5y' : '1y';
+    const url = `${YAHOO_FINANCE_URL}/${GOLD_SYMBOL}?interval=1d&range=${rangeParam}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Yahoo Finance API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const result = data.chart.result[0];
+    
+    if (!result || !result.timestamp || !result.indicators) {
+      throw new Error('Invalid Yahoo Finance response');
+    }
+
+    const timestamps = result.timestamp;
+    const quote = result.indicators.quote[0];
+    
+    // Build candles from Yahoo data
+    const candles = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      // Skip if no data for this day
+      if (quote.open[i] === null || quote.high[i] === null || 
+          quote.low[i] === null || quote.close[i] === null) {
+        continue;
+      }
+      
+      candles.push({
+        timestamp: timestamps[i] * 1000, // Convert seconds to ms
+        open: quote.open[i],
+        high: quote.high[i],
+        low: quote.low[i],
+        close: quote.close[i],
+        volume: quote.volume[i] || 0,
+      });
+    }
+
+    console.log(`✅ Loaded ${candles.length} daily candles from Yahoo Finance`);
+
+    // Save to database (marking as yahoo_finance source)
+    saveYahooFinanceHistory(candles);
+
+    return candles;
+  } catch (error) {
+    console.error('Yahoo Finance historical fetch failed:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Save Yahoo Finance historical data to database
+ * Only inserts dates that don't already exist from FreeGoldAPI
+ */
+function saveYahooFinanceHistory(candles) {
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO price_history (timestamp, open, high, low, close, volume, source)
+    VALUES (?, ?, ?, ?, ?, ?, 'yahoo_finance')
+  `);
+
+  const insertMany = db.transaction((candles) => {
+    let inserted = 0;
+    for (const candle of candles) {
+      const result = stmt.run(candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume);
+      if (result.changes > 0) inserted++;
+    }
+    console.log(`✅ Saved ${inserted} new daily candles from Yahoo Finance (skipped existing)`);
+  });
+
+  insertMany(candles);
 }
 
 /**
@@ -305,6 +574,12 @@ function savePriceHistory(candles) {
 /**
  * Get historical data from database (for charts)
  * Combines FreeGoldAPI historical data with Swissquote daily aggregates
+ * 
+ * NOTE: This function returns historical daily data that is NOT provider-specific.
+ * - price_history: Contains daily data from FreeGoldAPI (source: 'freegoldapi')
+ * - daily_aggregates: Contains daily OHLC computed from intraday_ticks
+ * 
+ * For provider-specific intraday data, use getIntradayTicks() with providerId filter.
  */
 export function getHistoryFromDatabase(days = 365) {
   const since = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -383,14 +658,27 @@ function getCachedHistory(range) {
 /**
  * Get intraday ticks for a specific date range
  * For accuracy comparison against historical data
+ * 
+ * @param {string} startDate - Start date (YYYY-MM-DD)
+ * @param {string} endDate - End date (YYYY-MM-DD)
+ * @param {string} providerId - Optional provider ID to filter by
  */
-export function getIntradayTicks(startDate, endDate) {
+export function getIntradayTicks(startDate, endDate, providerId = null) {
   const startTs = new Date(startDate).getTime();
   // Add 24 hours to include the full end date (endDate at midnight means start of that day)
   const endTs = new Date(endDate).getTime() + (24 * 60 * 60 * 1000);
 
+  if (providerId) {
+    return db.prepare(`
+      SELECT timestamp, bid, ask, mid, spread, source, provider_id
+      FROM intraday_ticks
+      WHERE timestamp >= ? AND timestamp < ? AND provider_id = ?
+      ORDER BY timestamp ASC
+    `).all(startTs, endTs, providerId);
+  }
+
   return db.prepare(`
-    SELECT timestamp, bid, ask, mid, spread, source
+    SELECT timestamp, bid, ask, mid, spread, source, provider_id
     FROM intraday_ticks
     WHERE timestamp >= ? AND timestamp < ?
     ORDER BY timestamp ASC
@@ -501,10 +789,7 @@ function saveCurrentPrice(priceData) {
     priceData.change24h, priceData.changePercent24h,
     priceData.timestamp, priceData.source
   );
-
-  // Cleanup: keep last 7 days
-  db.prepare('DELETE FROM price_snapshots WHERE timestamp < ?')
-    .run(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // Note: Cleanup is handled by scheduled maintenance, not inline
 }
 
 /**
@@ -533,15 +818,34 @@ function getLastSavedPrice() {
 
 /**
  * Manual refresh
+ * Forces a fresh fetch from Swissquote
  */
 export async function manualRefresh() {
   console.log('🔄 Manual refresh triggered...');
+  
+  // Try Swissquote first directly
+  try {
+    const swissquotePrice = await fetchFromSwissquote();
+    if (swissquotePrice) {
+      saveIntradayTick(swissquotePrice, 'swissquote');
+      updateDailyAggregate(swissquotePrice, 'swissquote');
+      saveCurrentPrice(swissquotePrice);
+      updateLatestPriceData(swissquotePrice);
+      return swissquotePrice;
+    }
+  } catch (error) {
+    console.error('Manual refresh - Swissquote failed:', error.message);
+  }
+  
+  // Fall back to normal flow
   return fetchCurrentPrice();
 }
 
 /**
  * Fetch from Swissquote only (for automatic polling)
  * Saves tick and updates aggregates without fallback
+ * 
+ * CRITICAL: Always uses Swissquote's ts timestamp.
  */
 export async function fetchFromSwissquoteOnly() {
   try {
@@ -563,20 +867,36 @@ export async function fetchFromSwissquoteOnly() {
     }
 
     const quote = data[0];
-    const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium') 
+
+    // Validate spreadProfilePrices exists and is non-empty
+    if (!quote.spreadProfilePrices || !Array.isArray(quote.spreadProfilePrices) || quote.spreadProfilePrices.length === 0) {
+      throw new Error('Invalid Swissquote response: spreadProfilePrices missing or empty');
+    }
+
+    const prices = quote.spreadProfilePrices.find(p => p.spreadProfile === 'premium')
       || quote.spreadProfilePrices[0];
+
+    // CRITICAL: Use Swissquote's timestamp, never Date.now()
+    const swissquoteTimestamp = quote.ts;
+    if (!swissquoteTimestamp) {
+      throw new Error('Swissquote poll: missing ts timestamp in response');
+    }
+    const timestamp = swissquoteTimestamp;
 
     const priceData = {
       price: (prices.bid + prices.ask) / 2,
       bid: prices.bid,
       ask: prices.ask,
-      timestamp: quote.ts || Date.now(),
+      timestamp: timestamp,
       source: 'Swissquote',
     };
 
-    // Save tick and update aggregates
-    saveIntradayTick(priceData);
-    updateDailyAggregate(priceData);
+    // Save tick and update aggregates with provider_id
+    saveIntradayTick(priceData, 'swissquote');
+    updateDailyAggregate(priceData, 'swissquote');
+    
+    // Update our latest tracking
+    updateLatestPriceData(priceData);
 
     return priceData;
   } catch (error) {
@@ -672,6 +992,8 @@ export async function fetchFromConfiguredApi(provider) {
     let priceData;
     
     if (provider.name.toLowerCase().includes('goldapi')) {
+      // GoldAPI provides timestamp in seconds, convert to ms
+      const apiTimestamp = data.timestamp ? data.timestamp * 1000 : Date.now();
       priceData = {
         price: data.price,
         bid: data.bid || data.price * 0.9995,
@@ -680,10 +1002,14 @@ export async function fetchFromConfiguredApi(provider) {
         low24h: data.low_price || data.price,
         change24h: data.ch || 0,
         changePercent24h: data.chp || 0,
-        timestamp: data.timestamp ? data.timestamp * 1000 : Date.now(),
+        timestamp: apiTimestamp,
         source: provider.name,
       };
     } else {
+      // For other providers, try to extract timestamp if available
+      const apiTimestamp = data.timestamp 
+        ? (data.timestamp < 1000000000000 ? data.timestamp * 1000 : data.timestamp)
+        : Date.now();
       priceData = {
         price: data.price || data.rate || data.value || data.last,
         bid: data.bid || data.price * 0.9995,
@@ -692,12 +1018,15 @@ export async function fetchFromConfiguredApi(provider) {
         low24h: data.low || data.low_24h || data.price,
         change24h: data.change || data.ch || 0,
         changePercent24h: data.change_percent || data.chp || 0,
-        timestamp: Date.now(),
+        timestamp: apiTimestamp,
         source: provider.name,
       };
     }
 
     saveCurrentPrice(priceData);
+    // Also save to intraday ticks with provider_id for provider-specific tracking
+    saveIntradayTick(priceData, provider.id || provider.name.toLowerCase().replace(/\s+/g, '_'));
+    updateLatestPriceData(priceData);
     return priceData;
   } catch (error) {
     console.error(`Error fetching from ${provider.name}:`, error.message);

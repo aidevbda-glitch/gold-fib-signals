@@ -13,11 +13,14 @@ import {
   AlertTriangle,
   Check,
   Copy,
-  LogOut
+  LogOut,
+  Server,
+  ChevronRight
 } from 'lucide-react';
 
 interface AdminPageProps {
   onBack: () => void;
+  onNavigateToProviders?: () => void;
 }
 
 interface AdminStatus {
@@ -52,7 +55,7 @@ interface MfaSetup {
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export function AdminPage({ onBack }: AdminPageProps) {
+export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
   // Auth state
   const [sessionId, setSessionId] = useState<string | null>(() => 
     localStorage.getItem('adminSession')
@@ -206,6 +209,8 @@ export function AdminPage({ onBack }: AdminPageProps) {
     setNeedsMfa(false);
   };
 
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+
   const handlePasswordChange = async () => {
     setPasswordChangeError('');
     
@@ -236,12 +241,21 @@ export function AdminPage({ onBack }: AdminPageProps) {
         return;
       }
       
-      setShowPasswordChange(false);
+      // Update local state immediately to prevent flashing warning
+      if (adminStatus) {
+        setAdminStatus({ ...adminStatus, isTempPassword: false });
+      }
+      
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      await checkAuthStatus();
-      alert('Password changed successfully!');
+      setPasswordChangeSuccess(true);
+      
+      // Wait a moment to show success, then close
+      setTimeout(() => {
+        setShowPasswordChange(false);
+        setPasswordChangeSuccess(false);
+      }, 1500);
     } catch (error) {
       setPasswordChangeError('Connection failed');
     }
@@ -550,55 +564,69 @@ export function AdminPage({ onBack }: AdminPageProps) {
       <div className="min-h-screen bg-gray-900 text-white p-4">
         <div className="max-w-md mx-auto bg-gray-800 rounded-xl p-6">
           <div className="text-center mb-6">
-            <Key className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
-            <h2 className="text-xl font-bold">Change Password</h2>
+            {passwordChangeSuccess ? (
+              <>
+                <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Check className="w-8 h-8 text-green-400" />
+                </div>
+                <h2 className="text-xl font-bold text-green-400">Password Changed!</h2>
+                <p className="text-gray-400 text-sm mt-1">Your password has been updated successfully.</p>
+              </>
+            ) : (
+              <>
+                <Key className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
+                <h2 className="text-xl font-bold">Change Password</h2>
+              </>
+            )}
           </div>
           
-          <div className="space-y-4">
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="Current password"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
-            />
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password (min 8 characters)"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
-            />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
-            />
-            
-            {passwordChangeError && (
-              <p className="text-red-400 text-sm flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" />
-                {passwordChangeError}
-              </p>
-            )}
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowPasswordChange(false)}
-                className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handlePasswordChange}
-                className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg"
-              >
-                Change
-              </button>
+          {!passwordChangeSuccess && (
+            <div className="space-y-4">
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password (min 8 characters)"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500"
+              />
+              
+              {passwordChangeError && (
+                <p className="text-red-400 text-sm flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4" />
+                  {passwordChangeError}
+                </p>
+              )}
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowPasswordChange(false)}
+                  className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePasswordChange}
+                  className="flex-1 py-2 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg"
+                >
+                  Change
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     );
@@ -689,6 +717,30 @@ export function AdminPage({ onBack }: AdminPageProps) {
                   Setup MFA
                 </button>
               )}
+            </div>
+          </div>
+        </section>
+
+        {/* Provider Management */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Server className="w-5 h-5 text-cyan-400" />
+            Data Providers
+          </h2>
+          
+          <div className="p-4 bg-gray-700/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Manage API Providers</p>
+                <p className="text-sm text-gray-400">Configure data sources, health checks, and fallback settings</p>
+              </div>
+              <button
+                onClick={onNavigateToProviders}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm"
+              >
+                Manage
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </section>

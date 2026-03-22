@@ -71,6 +71,7 @@ export interface IntradayTick {
   mid: number;
   spread: number;
   source: string;
+  provider_id?: string;  // Provider identifier for tracking data source
 }
 
 export interface AppState {
@@ -83,4 +84,6 @@ export interface AppState {
   error: string | null;
   lastUpdate: number | null;
   selectedRange: string;
+  activeProviderId: string | null;  // null means show all providers
+  intervalsActive: boolean;  // Prevents double-start of real-time updates
 }
