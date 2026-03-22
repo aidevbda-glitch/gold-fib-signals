@@ -48,6 +48,22 @@ body {
   display: none;
 }
 
+/* Nav scrollbar styling */
+.nav-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.nav-scroll::-webkit-scrollbar-track {
+  background: #374151;
+  border-radius: 4px;
+}
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 4px;
+}
+.nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* Animations */
 @keyframes pulse-glow {
   0%, 100% {

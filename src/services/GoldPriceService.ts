@@ -6,6 +6,9 @@ import type { GoldQuote, PriceData } from '../types/trading';
  * Fetches real-time and historical gold prices from the backend API.
  * Primary: Backend API (Swissquote + FreeGoldAPI)
  * Fallback: Mock data (only if backend completely unavailable)
+ * 
+ * CRITICAL: Prevents price reversion by tracking the latest timestamp.
+ * Only updates price if new data has a timestamp >= last known timestamp.
  */
 
 // Use relative URL for Docker (nginx proxies /api to backend)
@@ -18,24 +21,98 @@ export class GoldPriceService {
   private static backendFailures: number = 0;
   private static readonly MAX_FAILURES = 5;
 
+  // Track latest timestamp to prevent price reversion (flashing bug fix)
+  private static latestTimestamp: number = 0;
+  private static latestQuote: GoldQuote | null = null;
+
+  // Maximum allowed future timestamp skew (60 seconds for clock drift)
+  private static readonly MAX_FUTURE_SKEW_MS = 60000;
+
+  /**
+   * Validate quote data for correctness
+   * Checks: timestamp validity (non-zero, non-negative, not in future)
+   *         price validity (positive, reasonable range)
+   */
+  private static isValidQuoteData(quote: GoldQuote): boolean {
+    const now = Date.now();
+
+    // Check timestamp is valid
+    if (!quote.timestamp || quote.timestamp <= 0) {
+      console.warn(`Invalid quote timestamp: ${quote.timestamp}`);
+      return false;
+    }
+
+    // Check timestamp is not in the future (with small allowance for clock drift)
+    if (quote.timestamp > now + this.MAX_FUTURE_SKEW_MS) {
+      console.warn(`Future quote timestamp rejected: ${quote.timestamp} (now=${now}, diff=${quote.timestamp - now}ms)`);
+      return false;
+    }
+
+    // Check price is valid (positive and within reasonable bounds for gold)
+    if (!quote.price || quote.price <= 0) {
+      console.warn(`Invalid quote price: ${quote.price}`);
+      return false;
+    }
+
+    // Gold price sanity check (2024-2026 range: $1000-$10000/oz)
+    if (quote.price < 1000 || quote.price > 10000) {
+      console.warn(`Quote price out of expected range: ${quote.price}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Get the latest known quote (for preventing reversion)
+   */
+  static getLatestQuote(): GoldQuote | null {
+    return this.latestQuote;
+  }
+
+  /**
+   * Update latest quote only if new data is fresher (by timestamp)
+   * Returns true if updated, false if rejected as stale
+   */
+  private static updateIfFresher(quote: GoldQuote): boolean {
+    // If we have no previous data, accept this
+    if (!this.latestQuote || this.latestTimestamp === 0) {
+      this.latestQuote = quote;
+      this.latestTimestamp = quote.timestamp || Date.now();
+      this.lastPrice = quote.price;
+      return true;
+    }
+    
+    // Only update if this data is as fresh or fresher than what we have
+    const newTimestamp = quote.timestamp || Date.now();
+    if (newTimestamp >= this.latestTimestamp) {
+      this.latestQuote = quote;
+      this.latestTimestamp = newTimestamp;
+      this.lastPrice = quote.price;
+      return true;
+    }
+    
+    console.warn(`Rejecting stale price data: ts=${newTimestamp} vs latest=${this.latestTimestamp}`);
+    return false;
+  }
+
   /**
    * Fetch current gold spot price
    * Always tries backend first, only uses mock after multiple failures
+   * 
+   * CRITICAL: Uses timestamp-based freshness check to prevent price reversion.
+   * The backend returns Swissquote's ts timestamp which must be preserved.
    */
   static async getCurrentPrice(): Promise<GoldQuote> {
     try {
       const response = await fetch(`${API_BASE}/price/current`, {
         signal: AbortSignal.timeout(10000)
       });
-      
+
       if (response.ok) {
         const data = await response.json();
-        // Reset failure counter on success
-        this.backendFailures = 0;
-        // Update lastPrice for any future mock data
-        this.lastPrice = data.price;
-        
-        return {
+
+        const quote: GoldQuote = {
           price: data.price,
           bid: data.bid,
           ask: data.ask,
@@ -43,23 +120,49 @@ export class GoldPriceService {
           low24h: data.low24h,
           change24h: data.change24h,
           changePercent24h: data.changePercent24h,
-          timestamp: data.timestamp,
+          timestamp: data.timestamp, // CRITICAL: Use backend's Swissquote timestamp
           source: data.source,
         };
+
+        // Validate quote data BEFORE resetting failure counter
+        if (!this.isValidQuoteData(quote)) {
+          throw new Error('Invalid quote data received from backend');
+        }
+
+        // Reset failure counter only after successful validation
+        this.backendFailures = 0;
+
+        // Only update if this data is fresher (prevents reversion bug)
+        this.updateIfFresher(quote);
+
+        // Return the freshest data we have (either this new data or our cached latest)
+        return this.latestQuote || quote;
       }
-      
+
       throw new Error(`Backend returned ${response.status}`);
     } catch (error) {
       this.backendFailures++;
       console.warn(`Backend fetch failed (${this.backendFailures}/${this.MAX_FAILURES}):`, error);
-      
+
       // Only use mock data after multiple consecutive failures
+      // AND only if we don't already have real data
       if (this.backendFailures >= this.MAX_FAILURES) {
         console.warn('Using mock data - backend appears unavailable');
+        // If we have real data, keep using it instead of mock
+        if (this.latestQuote) {
+          console.log('Returning cached real data instead of mock');
+          return this.latestQuote;
+        }
         return this.generateMockQuote();
       }
-      
-      // Retry with cached/mock data but indicate it's stale
+
+      // On early failures, return cached real data if available
+      if (this.latestQuote) {
+        console.log('Returning cached real data after fetch failure');
+        return this.latestQuote;
+      }
+
+      // No cached data yet, return mock but mark clearly
       return this.generateMockQuote();
     }
   }
@@ -192,19 +295,21 @@ export class GoldPriceService {
 
   /**
    * Simulate real-time price update
+   * Uses the actual timestamp from the price source (Swissquote)
    */
   static async simulateTick(): Promise<GoldQuote> {
     const quote = await this.getCurrentPrice();
     
     if (this.mockHistory.length > 0) {
       const lastCandle = this.mockHistory[this.mockHistory.length - 1];
-      const candleAge = Date.now() - lastCandle.timestamp;
+      // Use the quote's timestamp (from Swissquote) not Date.now()
+      const candleAge = (quote.timestamp || Date.now()) - lastCandle.timestamp;
       const dayMs = 24 * 60 * 60 * 1000;
       
       // For daily data, only create new candle after a day
       if (candleAge > dayMs) {
         this.addCandle({
-          timestamp: Date.now(),
+          timestamp: quote.timestamp || Date.now(),
           open: quote.price,
           high: quote.price,
           low: quote.price,

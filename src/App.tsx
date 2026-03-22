@@ -14,10 +14,13 @@ import { BuySignalsPage } from './pages/BuySignalsPage';
 import { SellSignalsPage } from './pages/SellSignalsPage';
 import { AnalysisPage } from './pages/AnalysisPage';
 import { PatternsPage } from './pages/PatternsPage';
+import { DonationPage } from './pages/DonationPage';
+import { AdminPage } from './pages/AdminPage';
+import { ProviderManagementPage } from './pages/ProviderManagementPage';
 import { TIMEFRAMES } from './types/products';
-import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart } from 'lucide-react';
+import { Activity, Github, Layers, Clock, Settings, TrendingUp, TrendingDown, BarChart3, Gauge, CandlestickChart, Heart, ShieldCheck } from 'lucide-react';
 
-type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns';
+type Page = 'signals' | 'products' | 'settings' | 'buy' | 'sell' | 'analysis' | 'patterns' | 'donate' | 'admin' | 'providers';
 
 type ChartView = 'daily' | 'intraday';
 
@@ -55,6 +58,21 @@ function App() {
     return <PatternsPage onBack={() => setCurrentPage('signals')} />;
   }
 
+  if (currentPage === 'donate') {
+    return <DonationPage onBack={() => setCurrentPage('signals')} />;
+  }
+
+  if (currentPage === 'admin') {
+    return <AdminPage 
+      onBack={() => setCurrentPage('signals')} 
+      onNavigateToProviders={() => setCurrentPage('providers')}
+    />;
+  }
+
+  if (currentPage === 'providers') {
+    return <ProviderManagementPage onBack={() => setCurrentPage('admin')} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -74,7 +92,7 @@ function App() {
             </div>
             
             {/* Navigation Buttons */}
-            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0 scrollbar-none">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
               <button
                 onClick={() => setCurrentPage('buy')}
                 className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-green-900/50 hover:bg-green-800/50 text-green-400 rounded-lg transition-colors border border-green-700/50 text-sm shrink-0"
@@ -106,6 +124,20 @@ function App() {
               >
                 <Gauge className="w-4 h-4" />
                 <span className="hidden lg:inline">Analysis</span>
+              </button>
+              <button
+                onClick={() => setCurrentPage('donate')}
+                className="p-1.5 sm:p-2 bg-pink-900/50 hover:bg-pink-800/50 text-pink-400 rounded-lg transition-colors shrink-0 border border-pink-700/50"
+                title="Support Us"
+              >
+                <Heart className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <button
+                onClick={() => setCurrentPage('admin')}
+                className="p-1.5 sm:p-2 bg-yellow-900/50 hover:bg-yellow-800/50 text-yellow-400 rounded-lg transition-colors shrink-0 border border-yellow-700/50"
+                title="Admin"
+              >
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setCurrentPage('products')}
@@ -287,7 +319,6 @@ function App() {
       <footer className="border-t border-gray-800 mt-12 py-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-gray-500 text-sm">
           <p>Gold Fib Signals • Built with React + Vite</p>
-          <p className="mt-1">Data refreshes every 5 seconds • Using mock data for demo</p>
         </div>
       </footer>
     </div>

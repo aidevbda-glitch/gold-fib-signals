@@ -32,6 +32,24 @@ import {
   GOLD_BIAS
 } from './macroRegimeService.js';
 import {
+  initProviderTables,
+  seedDefaultProviders,
+  getAllProviders,
+  getActiveProviders,
+  getProvider,
+  addProvider,
+  updateProvider,
+  deleteProvider,
+  setProviderPriority,
+  toggleProviderActive,
+  testProvider,
+  getProviderStats,
+  getProviderDashboard,
+  runHealthChecks,
+  getFallbackHistory,
+  fetchPriceWithFallback
+} from './providerService.js';
+import {
   getAllApiProviders,
   getApiProvider,
   addApiProvider,
@@ -47,6 +65,33 @@ import {
   setFibonacciSettings,
   shouldRecalculateFibonacci
 } from './settingsService.js';
+import {
+  recordDonation,
+  getDonationStats,
+  getRecentDonations,
+  getTopDonors,
+  getDonationGoal,
+  setDonationGoal
+} from './donationService.js';
+import {
+  getAdSettings,
+  updateAdSettings,
+  toggleAds
+} from './adService.js';
+import {
+  verifyPassword,
+  changePassword,
+  createSession,
+  verifySession,
+  updateSessionMfa,
+  invalidateSession,
+  setupMfa,
+  enableMfa,
+  verifyMfa,
+  disableMfa,
+  getAdminStatus
+} from './adminAuthService.js';
+import QRCode from 'qrcode';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,9 +100,39 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Input validation helper functions
+function parsePositiveInt(value, defaultValue, maxValue = Infinity) {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed <= 0) return defaultValue;
+  return Math.min(parsed, maxValue);
+}
+
+function validateDateString(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  // Validate YYYY-MM-DD format
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(dateStr)) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  return dateStr;
+}
+
+function validateProviderId(providerId) {
+  if (!providerId || typeof providerId !== 'string') return null;
+  // Allow alphanumeric, hyphens, and underscores only
+  const regex = /^[a-zA-Z0-9_-]+$/;
+  if (!regex.test(providerId)) return null;
+  return providerId;
+}
+
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  try {
+    res.json({ status: 'ok', timestamp: Date.now() });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ error: 'Health check failed' });
+  }
 });
 
 // ==================== PRICE ENDPOINTS ====================
@@ -149,8 +224,8 @@ app.post('/api/price/refresh', async (req, res) => {
  */
 app.get('/api/price/cached', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 365;
-    const history = getPriceHistory(Math.min(days, 1095)); // Max 3 years
+    const days = parsePositiveInt(req.query.days, 365, 1095); // Max 3 years
+    const history = getPriceHistory(days);
     res.json({
       days,
       count: history.length,
@@ -165,18 +240,20 @@ app.get('/api/price/cached', (req, res) => {
 /**
  * GET /api/price/intraday
  * Get intraday Swissquote tick data
- * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD)
+ * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD), providerId (optional)
  */
 app.get('/api/price/intraday', (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const start = req.query.start || today;
-    const end = req.query.end || today;
+    const start = validateDateString(req.query.start) || today;
+    const end = validateDateString(req.query.end) || today;
+    const providerId = validateProviderId(req.query.providerId); // Optional provider filter
 
-    const ticks = getIntradayTicks(start, end);
+    const ticks = getIntradayTicks(start, end, providerId);
     res.json({
       start,
       end,
+      providerId,
       count: ticks.length,
       data: ticks
     });
@@ -196,9 +273,9 @@ app.get('/api/price/daily-aggregates', (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .toISOString().split('T')[0];
-    
-    const start = req.query.start || thirtyDaysAgo;
-    const end = req.query.end || today;
+
+    const start = validateDateString(req.query.start) || thirtyDaysAgo;
+    const end = validateDateString(req.query.end) || today;
 
     const aggregates = getDailyAggregates(start, end);
     res.json({
@@ -220,16 +297,16 @@ app.get('/api/price/daily-aggregates', (req, res) => {
  */
 app.get('/api/price/accuracy', (req, res) => {
   try {
-    const date = req.query.date;
+    const date = validateDateString(req.query.date);
     if (!date) {
       return res.status(400).json({ error: 'Date parameter required (YYYY-MM-DD)' });
     }
 
     const comparison = getAccuracyComparison(date);
     if (!comparison) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'No data available for comparison on this date',
-        date 
+        date
       });
     }
 
@@ -247,8 +324,8 @@ app.get('/api/price/accuracy', (req, res) => {
  */
 app.get('/api/price/database', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 365;
-    const history = getHistoryFromDatabase(Math.min(days, 1095));
+    const days = parsePositiveInt(req.query.days, 365, 1095); // Max 3 years
+    const history = getHistoryFromDatabase(days);
     res.json({
       days,
       count: history.length,
@@ -294,8 +371,8 @@ app.post('/api/signals', (req, res) => {
  */
 app.get('/api/signals', (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
+    const limit = parsePositiveInt(req.query.limit, 50, 200); // Max 200
+    const offset = parsePositiveInt(req.query.offset, 0);
     const type = req.query.type?.toUpperCase();
 
     if (type && !['BUY', 'SELL'].includes(type)) {
@@ -353,8 +430,13 @@ app.get('/api/signals/stats', (req, res) => {
  */
 app.get('/api/signals/range', (req, res) => {
   try {
-    const start = parseInt(req.query.start) || (Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const end = parseInt(req.query.end) || Date.now();
+    const start = parsePositiveInt(req.query.start, Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = parsePositiveInt(req.query.end, Date.now());
+
+    // Validate that end >= start
+    if (end < start) {
+      return res.status(400).json({ error: 'End timestamp must be >= start timestamp' });
+    }
 
     const signals = getSignalsByDateRange(start, end);
     res.json({
@@ -684,14 +766,19 @@ app.get('/api/polling/stats', (req, res) => {
  * Get polling configuration
  */
 app.get('/api/polling/config', (req, res) => {
-  const intervalMs = parseInt(process.env.POLL_INTERVAL_MS) || 60000;
-  res.json({
-    enabled: true,
-    intervalMs,
-    intervalSeconds: intervalMs / 1000,
-    source: 'Swissquote',
-    retention: '1 year'
-  });
+  try {
+    const intervalMs = parsePositiveInt(process.env.POLL_INTERVAL_MS, 60000);
+    res.json({
+      enabled: true,
+      intervalMs,
+      intervalSeconds: intervalMs / 1000,
+      source: 'Swissquote',
+      retention: '1 year'
+    });
+  } catch (error) {
+    console.error('Error fetching polling config:', error);
+    res.status(500).json({ error: 'Failed to fetch polling configuration' });
+  }
 });
 
 // ==================== MACRO ANALYSIS ENDPOINTS ====================
@@ -959,7 +1046,7 @@ app.get('/api/macro/dxy', async (req, res) => {
  */
 app.get('/api/macro/correlation', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 20;
+    const days = parsePositiveInt(req.query.days, 20, 365); // Max 1 year
     const correlation = calculateGoldDXYCorrelation(days);
     res.json({
       days,
@@ -998,7 +1085,7 @@ app.get('/api/macro/regime', async (req, res) => {
  */
 app.get('/api/macro/regime/history', (req, res) => {
   try {
-    const days = parseInt(req.query.days) || 30;
+    const days = parsePositiveInt(req.query.days, 30, 365); // Max 1 year
     const history = getRegimeHistory(days);
     res.json({
       days,
@@ -1053,6 +1140,224 @@ app.post('/api/signals/with-macro', async (req, res) => {
   } catch (error) {
     console.error('Error generating signal with macro:', error);
     res.status(500).json({ error: 'Failed to generate signal with macro context' });
+  }
+});
+
+// ==================== DATA PROVIDER MANAGEMENT ENDPOINTS ====================
+
+/**
+ * GET /api/providers
+ * Get all data providers
+ */
+app.get('/api/providers', (req, res) => {
+  try {
+    const providers = getAllProviders();
+    res.json({ data: providers });
+  } catch (error) {
+    console.error('Error fetching providers:', error);
+    res.status(500).json({ error: 'Failed to fetch providers' });
+  }
+});
+
+/**
+ * GET /api/providers/active
+ * Get active providers sorted by priority
+ */
+app.get('/api/providers/active', (req, res) => {
+  try {
+    const providers = getActiveProviders();
+    res.json({ data: providers });
+  } catch (error) {
+    console.error('Error fetching active providers:', error);
+    res.status(500).json({ error: 'Failed to fetch active providers' });
+  }
+});
+
+/**
+ * GET /api/providers/dashboard
+ * Get provider dashboard data for admin
+ */
+app.get('/api/providers/dashboard', (req, res) => {
+  try {
+    const dashboard = getProviderDashboard();
+    res.json(dashboard);
+  } catch (error) {
+    console.error('Error fetching provider dashboard:', error);
+    res.status(500).json({ error: 'Failed to fetch provider dashboard' });
+  }
+});
+
+/**
+ * GET /api/providers/:id
+ * Get a specific provider
+ */
+app.get('/api/providers/:id', (req, res) => {
+  try {
+    const provider = getProvider(req.params.id);
+    if (!provider) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error fetching provider:', error);
+    res.status(500).json({ error: 'Failed to fetch provider' });
+  }
+});
+
+/**
+ * POST /api/providers
+ * Add a new provider
+ */
+app.post('/api/providers', (req, res) => {
+  try {
+    const provider = addProvider(req.body);
+    res.status(201).json({ data: provider });
+  } catch (error) {
+    console.error('Error adding provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to add provider' });
+  }
+});
+
+/**
+ * PUT /api/providers/:id
+ * Update a provider
+ */
+app.put('/api/providers/:id', (req, res) => {
+  try {
+    const provider = updateProvider(req.params.id, req.body);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error updating provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to update provider' });
+  }
+});
+
+/**
+ * DELETE /api/providers/:id
+ * Delete a provider
+ */
+app.delete('/api/providers/:id', (req, res) => {
+  try {
+    const deleted = deleteProvider(req.params.id);
+    if (deleted) {
+      res.json({ success: true, message: 'Provider deleted' });
+    } else {
+      res.status(404).json({ error: 'Provider not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting provider:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/test
+ * Test a provider connection
+ */
+app.post('/api/providers/:id/test', async (req, res) => {
+  try {
+    const provider = getProvider(req.params.id);
+    if (!provider) {
+      return res.status(404).json({ error: 'Provider not found' });
+    }
+
+    const result = await testProvider(provider);
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing provider:', error);
+    res.status(500).json({ error: 'Failed to test provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/toggle
+ * Toggle provider active status
+ */
+app.post('/api/providers/:id/toggle', (req, res) => {
+  try {
+    const { isActive } = req.body;
+    const provider = toggleProviderActive(req.params.id, isActive);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error toggling provider:', error);
+    res.status(500).json({ error: 'Failed to toggle provider' });
+  }
+});
+
+/**
+ * POST /api/providers/:id/priority
+ * Update provider priority
+ */
+app.post('/api/providers/:id/priority', (req, res) => {
+  try {
+    const { priority } = req.body;
+    const provider = setProviderPriority(req.params.id, priority);
+    res.json({ data: provider });
+  } catch (error) {
+    console.error('Error updating priority:', error);
+    res.status(500).json({ error: 'Failed to update priority' });
+  }
+});
+
+/**
+ * GET /api/providers/:id/stats
+ * Get provider usage stats
+ */
+app.get('/api/providers/:id/stats', (req, res) => {
+  try {
+    const days = parsePositiveInt(req.query.days, 7, 365); // Max 1 year
+    const stats = getProviderStats(req.params.id, days);
+    res.json({ days, data: stats });
+  } catch (error) {
+    console.error('Error fetching provider stats:', error);
+    res.status(500).json({ error: 'Failed to fetch provider stats' });
+  }
+});
+
+/**
+ * GET /api/providers/health/check
+ * Run health checks on all active providers
+ */
+app.get('/api/providers/health/check', async (req, res) => {
+  try {
+    const results = await runHealthChecks();
+    res.json({ data: results });
+  } catch (error) {
+    console.error('Error running health checks:', error);
+    res.status(500).json({ error: 'Failed to run health checks' });
+  }
+});
+
+/**
+ * GET /api/providers/fallbacks
+ * Get fallback history
+ */
+app.get('/api/providers/fallbacks', (req, res) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 50, 500); // Max 500
+    const history = getFallbackHistory(limit);
+    res.json({ data: history });
+  } catch (error) {
+    console.error('Error fetching fallback history:', error);
+    res.status(500).json({ error: 'Failed to fetch fallback history' });
+  }
+});
+
+/**
+ * GET /api/price/providers
+ * Fetch current price using provider fallback system
+ */
+app.get('/api/price/providers', async (req, res) => {
+  try {
+    const result = await fetchPriceWithFallback();
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(503).json({ error: 'All providers failed', details: result.errors });
+    }
+  } catch (error) {
+    console.error('Error fetching price with fallback:', error);
+    res.status(500).json({ error: 'Failed to fetch price' });
   }
 });
 
@@ -1113,6 +1418,387 @@ function calculateMACD(data) {
   return { line, signal, histogram };
 }
 
+// ==================== ADMIN MIDDLEWARE ====================
+
+/**
+ * Middleware to verify admin session
+ */
+const requireAdmin = (req, res, next) => {
+  const sessionId = req.headers['x-admin-session'];
+  const session = verifySession(sessionId);
+  
+  if (!session.valid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  if (session.mfaRequired && !session.mfaVerified) {
+    return res.status(403).json({ error: 'MFA verification required', mfaRequired: true });
+  }
+  
+  req.adminSession = session;
+  next();
+};
+
+// ==================== DONATION ENDPOINTS ====================
+
+/**
+ * GET /api/donations/stats
+ * Get donation statistics
+ */
+app.get('/api/donations/stats', (req, res) => {
+  try {
+    const stats = getDonationStats();
+    res.json({ data: stats });
+  } catch (error) {
+    console.error('Error fetching donation stats:', error);
+    res.status(500).json({ error: 'Failed to fetch donation statistics' });
+  }
+});
+
+/**
+ * GET /api/donations/recent
+ * Get recent donations for donor wall
+ */
+app.get('/api/donations/recent', (req, res) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 10, 100); // Max 100
+    const donations = getRecentDonations(limit);
+    res.json({ data: donations });
+  } catch (error) {
+    console.error('Error fetching recent donations:', error);
+    res.status(500).json({ error: 'Failed to fetch recent donations' });
+  }
+});
+
+/**
+ * GET /api/donations/top
+ * Get top donors
+ */
+app.get('/api/donations/top', (req, res) => {
+  try {
+    const limit = parsePositiveInt(req.query.limit, 10, 100); // Max 100
+    const donors = getTopDonors(limit);
+    res.json({ data: donors });
+  } catch (error) {
+    console.error('Error fetching top donors:', error);
+    res.status(500).json({ error: 'Failed to fetch top donors' });
+  }
+});
+
+/**
+ * GET /api/donations/goal
+ * Get donation goal progress
+ */
+app.get('/api/donations/goal', (req, res) => {
+  try {
+    const goal = getDonationGoal();
+    res.json({ data: goal });
+  } catch (error) {
+    console.error('Error fetching donation goal:', error);
+    res.status(500).json({ error: 'Failed to fetch donation goal' });
+  }
+});
+
+/**
+ * PUT /api/donations/goal
+ * Set donation goal (admin only)
+ */
+app.put('/api/donations/goal', requireAdmin, (req, res) => {
+  try {
+    const { target, description } = req.body;
+    if (!target || target <= 0) {
+      return res.status(400).json({ error: 'Invalid target amount' });
+    }
+    setDonationGoal(target, description || 'Server costs');
+    const goal = getDonationGoal();
+    res.json({ data: goal });
+  } catch (error) {
+    console.error('Error setting donation goal:', error);
+    res.status(500).json({ error: 'Failed to set donation goal' });
+  }
+});
+
+/**
+ * POST /api/donations
+ * Record a new donation (called from payment webhook)
+ */
+app.post('/api/donations', (req, res) => {
+  try {
+    const { amount, currency, donorName, donorEmail, message, paymentProvider, paymentId, isAnonymous } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid donation amount' });
+    }
+    
+    const donation = recordDonation({
+      amount,
+      currency,
+      donorName,
+      donorEmail,
+      message,
+      paymentProvider,
+      paymentId,
+      isAnonymous
+    });
+    
+    res.json({ data: donation });
+  } catch (error) {
+    console.error('Error recording donation:', error);
+    res.status(500).json({ error: 'Failed to record donation' });
+  }
+});
+
+// ==================== ADMIN AUTH ENDPOINTS ====================
+
+/**
+ * POST /api/admin/login
+ * Login with password
+ */
+app.post('/api/admin/login', (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password required' });
+    }
+    
+    if (!verifyPassword(password)) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    const status = getAdminStatus();
+    const session = createSession(!status.mfaEnabled); // Auto-verify MFA if not enabled
+    
+    res.json({
+      data: {
+        sessionId: session.sessionId,
+        expiresAt: session.expiresAt,
+        mfaRequired: status.mfaEnabled,
+        isTempPassword: status.isTempPassword
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * POST /api/admin/verify-mfa
+ * Verify MFA token after login
+ */
+app.post('/api/admin/verify-mfa', async (req, res) => {
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    const { token } = req.body;
+    
+    const session = verifySession(sessionId);
+    if (!session.valid) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+    
+    const result = await verifyMfa(token);
+    if (!result.success) {
+      return res.status(401).json({ error: result.error });
+    }
+    
+    updateSessionMfa(sessionId, true);
+    
+    res.json({
+      data: {
+        success: true,
+        usedBackupCode: result.usedBackupCode,
+        remainingBackupCodes: result.remainingBackupCodes
+      }
+    });
+  } catch (error) {
+    console.error('MFA verification error:', error);
+    res.status(500).json({ error: 'MFA verification failed' });
+  }
+});
+
+/**
+ * POST /api/admin/logout
+ * Logout and invalidate session
+ */
+app.post('/api/admin/logout', (req, res) => {
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    if (sessionId) {
+      invalidateSession(sessionId);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
+/**
+ * GET /api/admin/status
+ * Get admin account status
+ */
+app.get('/api/admin/status', (req, res) => {
+  try {
+    const sessionId = req.headers['x-admin-session'];
+    const session = verifySession(sessionId);
+    const status = getAdminStatus();
+
+    res.json({
+      data: {
+        ...status,
+        isLoggedIn: session.valid,
+        mfaVerified: session.mfaVerified
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin status:', error);
+    res.status(500).json({ error: 'Failed to fetch admin status' });
+  }
+});
+
+/**
+ * POST /api/admin/change-password
+ * Change admin password
+ */
+app.post('/api/admin/change-password', requireAdmin, (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current and new password required' });
+    }
+    
+    const result = changePassword(currentPassword, newPassword);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Password change error:', error);
+    res.status(500).json({ error: 'Password change failed' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/setup
+ * Start MFA setup - get QR code
+ */
+app.post('/api/admin/mfa/setup', requireAdmin, async (req, res) => {
+  try {
+    const mfaSetup = setupMfa();
+    
+    // Generate QR code
+    const qrCodeDataUrl = await QRCode.toDataURL(mfaSetup.otpauthUrl);
+    
+    res.json({
+      data: {
+        secret: mfaSetup.secret,
+        qrCode: qrCodeDataUrl,
+        backupCodes: mfaSetup.backupCodes
+      }
+    });
+  } catch (error) {
+    console.error('MFA setup error:', error);
+    res.status(500).json({ error: 'MFA setup failed' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/enable
+ * Verify token and enable MFA
+ */
+app.post('/api/admin/mfa/enable', requireAdmin, async (req, res) => {
+  try {
+    const { secret, token, backupCodes } = req.body;
+    
+    if (!secret || !token || !backupCodes) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const result = await enableMfa(secret, token, backupCodes);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('MFA enable error:', error);
+    res.status(500).json({ error: 'Failed to enable MFA' });
+  }
+});
+
+/**
+ * POST /api/admin/mfa/disable
+ * Disable MFA (requires password)
+ */
+app.post('/api/admin/mfa/disable', requireAdmin, (req, res) => {
+  try {
+    const { password } = req.body;
+    
+    if (!password) {
+      return res.status(400).json({ error: 'Password required' });
+    }
+    
+    const result = disableMfa(password);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('MFA disable error:', error);
+    res.status(500).json({ error: 'Failed to disable MFA' });
+  }
+});
+
+// ==================== AD SETTINGS ENDPOINTS ====================
+
+/**
+ * GET /api/ads/settings
+ * Get ad settings
+ */
+app.get('/api/ads/settings', (req, res) => {
+  try {
+    const settings = getAdSettings();
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error fetching ad settings:', error);
+    res.status(500).json({ error: 'Failed to fetch ad settings' });
+  }
+});
+
+/**
+ * PUT /api/ads/settings
+ * Update ad settings (admin only)
+ */
+app.put('/api/ads/settings', requireAdmin, (req, res) => {
+  try {
+    const { adsEnabled, adsensePublisherId, placements } = req.body;
+    const settings = updateAdSettings({ adsEnabled, adsensePublisherId, placements });
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error updating ad settings:', error);
+    res.status(500).json({ error: 'Failed to update ad settings' });
+  }
+});
+
+/**
+ * POST /api/ads/toggle
+ * Toggle ads on/off (admin only)
+ */
+app.post('/api/ads/toggle', requireAdmin, (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const settings = toggleAds(enabled);
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error toggling ads:', error);
+    res.status(500).json({ error: 'Failed to toggle ads' });
+  }
+});
+
 // ==================== START SERVER ====================
 
 // Polling configuration (default: 1 minute, can be set via env)
@@ -1144,6 +1830,10 @@ async function pollSwissquote() {
 
 // Initialize macro tables
 initMacroTables();
+
+// Initialize provider management tables
+initProviderTables();
+seedDefaultProviders();
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
@@ -1185,6 +1875,20 @@ Endpoints:
   GET  /api/macro/correlation       - Gold/DXY correlation
   GET  /api/macro/regime            - Macro regime classification
   GET  /api/macro/regime/history    - Historical regime data
+  
+  Data Providers:
+  GET  /api/providers               - List all providers
+  GET  /api/providers/active        - List active providers
+  GET  /api/providers/dashboard     - Provider dashboard
+  GET  /api/providers/:id           - Get provider details
+  POST /api/providers               - Add new provider
+  PUT  /api/providers/:id           - Update provider
+  DELETE /api/providers/:id         - Delete provider
+  POST /api/providers/:id/test      - Test provider connection
+  POST /api/providers/:id/toggle    - Enable/disable provider
+  POST /api/providers/:id/priority  - Set provider priority
+  GET  /api/providers/health/check  - Run health checks
+  GET  /api/price/providers         - Fetch price with fallback
   
   Settings:
   GET  /api/settings                - Get all settings
