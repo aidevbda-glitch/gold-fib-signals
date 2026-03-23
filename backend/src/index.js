@@ -104,6 +104,20 @@ import {
   sendSignalNotification,
   getEmailStats,
 } from './emailService.js';
+import {
+  initSecureEmailTables,
+  requestSubscription,
+  approveSubscription,
+  rejectSubscription,
+  unsubscribe,
+  getPendingRequests,
+  handleStripeWebhook,
+  getAdminNotificationSettings,
+  updateAdminNotificationSettings,
+  getAuditLog,
+  getSecureEmailStats,
+  checkRateLimit,
+} from './emailNotificationService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1869,6 +1883,9 @@ seedDefaultProviders();
 // Initialize email settings
 initEmailSettings();
 
+// Initialize secure email notification tables
+initSecureEmailTables();
+
 // ==================== EMAIL NOTIFICATION ENDPOINTS ====================
 
 /**
@@ -2025,6 +2042,378 @@ app.post('/api/email/send-test', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error sending test email:', error);
     res.status(500).json({ error: 'Failed to send test email' });
+  }
+});
+
+// ==================== SECURE EMAIL NOTIFICATION ENDPOINTS ====================
+
+/**
+ * POST /api/notifications/request
+ * Request email subscription (rate limited: 3 per IP per day)
+ */
+app.post('/api/notifications/request', async (req, res) => {
+  try {
+    const { email, name } = req.body;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const result = requestSubscription(email, name, ip, userAgent);
+    res.json(result);
+  } catch (error) {
+    console.error('Error requesting subscription:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/notifications/rate-limit
+ * Check current rate limit status
+ */
+app.get('/api/notifications/rate-limit', (req, res) => {
+  try {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const status = checkRateLimit(ip);
+    res.json({
+      allowed: status.allowed,
+      remaining: status.remaining,
+      resetAt: new Date(status.resetAt).toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking rate limit:', error);
+    res.status(500).json({ error: 'Failed to check rate limit' });
+  }
+});
+
+/**
+ * POST /api/notifications/approve/:token
+ * Approve subscription request (admin only)
+ */
+app.post('/api/notifications/approve/:token', requireAdmin, (req, res) => {
+  try {
+    const { token } = req.params;
+    const adminEmail = req.adminSession?.email || 'admin';
+    
+    const result = approveSubscription(token, adminEmail);
+    res.json(result);
+  } catch (error) {
+    console.error('Error approving subscription:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/notifications/approve-link/:token
+ * Simple approval link (for email links, returns HTML)
+ */
+app.get('/api/notifications/approve/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const result = approveSubscription(token, 'email_link');
+    
+    // Return HTML response for better UX
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Subscription Approved</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .success { color: #22c55e; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+    a { color: #f59e0b; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="success">✓</div>
+    <h1>Subscription Approved!</h1>
+    <p>${result.message}</p>
+    <p>A welcome email has been sent to ${result.email}.</p>
+    <p><a href="/">Return to Gold Fib Signals</a></p>
+  </div>
+</body>
+</html>
+    `);
+  } catch (error) {
+    console.error('Error approving subscription:', error);
+    res.status(400).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .error { color: #ef4444; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+    a { color: #f59e0b; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error">✗</div>
+    <h1>Unable to Approve</h1>
+    <p>${error.message}</p>
+    <p><a href="/">Return to Gold Fib Signals</a></p>
+  </div>
+</body>
+</html>
+    `);
+  }
+});
+
+/**
+ * POST /api/notifications/reject/:token
+ * Reject subscription request (admin only)
+ */
+app.post('/api/notifications/reject/:token', requireAdmin, (req, res) => {
+  try {
+    const { token } = req.params;
+    const { reason } = req.body;
+    const adminEmail = req.adminSession?.email || 'admin';
+    
+    const result = rejectSubscription(token, reason, adminEmail);
+    res.json(result);
+  } catch (error) {
+    console.error('Error rejecting subscription:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/notifications/reject/:token
+ * Simple reject link (for email links, returns HTML)
+ */
+app.get('/api/notifications/reject/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const result = rejectSubscription(token, 'Rejected via email link', 'email_link');
+    
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Subscription Rejected</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .info { color: #6b7280; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+    a { color: #f59e0b; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="info">✓</div>
+    <h1>Subscription Rejected</h1>
+    <p>${result.message}</p>
+    <p>The user at ${result.email} has been notified.</p>
+    <p><a href="/">Return to Gold Fib Signals</a></p>
+  </div>
+</body>
+</html>
+    `);
+  } catch (error) {
+    console.error('Error rejecting subscription:', error);
+    res.status(400).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .error { color: #ef4444; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error">✗</div>
+    <h1>Error</h1>
+    <p>${error.message}</p>
+  </div>
+</body>
+</html>
+    `);
+  }
+});
+
+/**
+ * GET /api/notifications/pending
+ * Get pending subscription requests (admin only)
+ */
+app.get('/api/notifications/pending', requireAdmin, (req, res) => {
+  try {
+    const requests = getPendingRequests();
+    res.json({ data: requests });
+  } catch (error) {
+    console.error('Error fetching pending requests:', error);
+    res.status(500).json({ error: 'Failed to fetch pending requests' });
+  }
+});
+
+/**
+ * POST /api/notifications/unsubscribe/:token
+ * Unsubscribe using token
+ */
+app.post('/api/notifications/unsubscribe/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const result = unsubscribe(token);
+    res.json(result);
+  } catch (error) {
+    console.error('Error unsubscribing:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/notifications/unsubscribe/:token
+ * Unsubscribe page (HTML)
+ */
+app.get('/api/notifications/unsubscribe/:token', (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const result = unsubscribe(token);
+    
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Unsubscribed</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .success { color: #22c55e; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+    a { color: #f59e0b; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="success">✓</div>
+    <h1>Unsubscribed Successfully</h1>
+    <p>${result.message}</p>
+    <p>You will no longer receive email notifications from Gold Fib Signals.</p>
+    <p><a href="/">Return to Gold Fib Signals</a></p>
+  </div>
+</body>
+</html>
+    `);
+  } catch (error) {
+    console.error('Error unsubscribing:', error);
+    res.status(400).send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Error</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #111827; }
+    .container { text-align: center; padding: 40px; background: #1f2937; border-radius: 16px; max-width: 500px; }
+    .error { color: #ef4444; font-size: 64px; margin-bottom: 20px; }
+    h1 { color: white; margin-bottom: 10px; }
+    p { color: #9ca3af; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error">✗</div>
+    <h1>Error</h1>
+    <p>${error.message}</p>
+  </div>
+</body>
+</html>
+    `);
+  }
+});
+
+/**
+ * POST /api/stripe/webhook
+ * Stripe webhook for donation verification
+ */
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  try {
+    const event = JSON.parse(req.body);
+    
+    const result = handleStripeWebhook(event);
+    res.json(result);
+  } catch (error) {
+    console.error('Error handling Stripe webhook:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/notification-settings
+ * Get admin notification settings (admin only)
+ */
+app.get('/api/admin/notification-settings', requireAdmin, (req, res) => {
+  try {
+    const settings = getAdminNotificationSettings();
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error fetching notification settings:', error);
+    res.status(500).json({ error: 'Failed to fetch notification settings' });
+  }
+});
+
+/**
+ * PUT /api/admin/notification-settings
+ * Update admin notification settings (admin only)
+ */
+app.put('/api/admin/notification-settings', requireAdmin, (req, res) => {
+  try {
+    const updates = req.body;
+    const settings = updateAdminNotificationSettings(updates);
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error updating notification settings:', error);
+    res.status(500).json({ error: 'Failed to update notification settings' });
+  }
+});
+
+/**
+ * GET /api/admin/notification-stats
+ * Get secure email notification stats (admin only)
+ */
+app.get('/api/admin/notification-stats', requireAdmin, (req, res) => {
+  try {
+    const stats = getSecureEmailStats();
+    res.json({ data: stats });
+  } catch (error) {
+    console.error('Error fetching notification stats:', error);
+    res.status(500).json({ error: 'Failed to fetch notification stats' });
+  }
+});
+
+/**
+ * GET /api/admin/audit-log
+ * Get email audit log (admin only)
+ */
+app.get('/api/admin/audit-log', requireAdmin, (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const logs = getAuditLog(limit);
+    res.json({ data: logs });
+  } catch (error) {
+    console.error('Error fetching audit log:', error);
+    res.status(500).json({ error: 'Failed to fetch audit log' });
   }
 });
 
