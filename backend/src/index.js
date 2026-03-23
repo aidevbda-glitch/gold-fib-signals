@@ -117,6 +117,10 @@ import {
   getAuditLog,
   getSecureEmailStats,
   checkRateLimit,
+  getSmtpSettingsSafe,
+  updateSmtpSettings,
+  testSmtpConnection,
+  sendTestEmail,
 } from './emailNotificationService.js';
 
 const app = express();
@@ -2414,6 +2418,91 @@ app.get('/api/admin/audit-log', requireAdmin, (req, res) => {
   } catch (error) {
     console.error('Error fetching audit log:', error);
     res.status(500).json({ error: 'Failed to fetch audit log' });
+  }
+});
+
+// ==================== SMTP SETTINGS ENDPOINTS ====================
+
+/**
+ * GET /api/admin/smtp-settings
+ * Get SMTP configuration (admin only)
+ * Returns settings with password masked
+ */
+app.get('/api/admin/smtp-settings', requireAdmin, (req, res) => {
+  try {
+    const settings = getSmtpSettingsSafe();
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error fetching SMTP settings:', error);
+    res.status(500).json({ error: 'Failed to fetch SMTP settings' });
+  }
+});
+
+/**
+ * PUT /api/admin/smtp-settings
+ * Update SMTP configuration (admin only)
+ */
+app.put('/api/admin/smtp-settings', requireAdmin, (req, res) => {
+  try {
+    const { host, port, user, pass, secure, fromEmail, fromName } = req.body;
+
+    // Validate required fields if provided
+    if (host !== undefined && !host.trim()) {
+      return res.status(400).json({ error: 'SMTP host cannot be empty' });
+    }
+    if (port !== undefined && (isNaN(port) || port < 1 || port > 65535)) {
+      return res.status(400).json({ error: 'Invalid SMTP port' });
+    }
+
+    const updates = {
+      ...(host !== undefined && { host: host.trim() }),
+      ...(port !== undefined && { port }),
+      ...(user !== undefined && { user: user.trim() }),
+      ...(pass !== undefined && { pass }),
+      ...(secure !== undefined && { secure }),
+      ...(fromEmail !== undefined && { fromEmail: fromEmail.trim() }),
+      ...(fromName !== undefined && { fromName: fromName.trim() }),
+    };
+
+    const settings = updateSmtpSettings(updates);
+    res.json({ data: settings });
+  } catch (error) {
+    console.error('Error updating SMTP settings:', error);
+    res.status(500).json({ error: 'Failed to update SMTP settings' });
+  }
+});
+
+/**
+ * POST /api/admin/smtp-test
+ * Test SMTP connection (admin only)
+ * Sends a test email to the admin email
+ */
+app.post('/api/admin/smtp-test', requireAdmin, async (req, res) => {
+  try {
+    const { to } = req.body;
+    
+    // First test the connection
+    const connectionResult = await testSmtpConnection();
+    if (!connectionResult.success) {
+      return res.status(400).json(connectionResult);
+    }
+
+    // Send test email to specified address or admin email
+    const adminSettings = getAdminNotificationSettings();
+    const recipient = to || adminSettings.admin_email;
+    
+    if (!recipient) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No recipient specified. Please set admin email in notification settings or provide a "to" address.' 
+      });
+    }
+
+    const result = await sendTestEmail(recipient);
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing SMTP:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

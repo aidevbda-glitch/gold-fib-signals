@@ -22,6 +22,276 @@ const rateLimitStore = new Map();
 // Email transporter cache
 let emailTransporter = null;
 
+// ==================== SMTP SETTINGS ====================
+
+/**
+ * Get SMTP settings from database (with fallback to env vars)
+ * @returns {object} SMTP settings
+ */
+export function getSmtpSettings() {
+  const settings = db.prepare('SELECT * FROM admin_notification_settings WHERE id = 1').get();
+  
+  if (!settings) {
+    // Return env var fallback
+    return {
+      host: process.env.SMTP_HOST || '',
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
+      fromName: process.env.FROM_NAME || 'Gold Fib Signals',
+      source: 'env'
+    };
+  }
+
+  // Decrypt password if exists
+  let decryptedPass = '';
+  if (settings.smtp_pass_encrypted) {
+    try {
+      decryptedPass = decrypt(settings.smtp_pass_encrypted);
+    } catch (e) {
+      console.error('Failed to decrypt SMTP password:', e.message);
+      decryptedPass = '';
+    }
+  }
+
+  // If database settings are empty, fallback to env vars
+  const hasDbSettings = settings.smtp_host && settings.smtp_user;
+  
+  if (!hasDbSettings) {
+    return {
+      host: process.env.SMTP_HOST || '',
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
+      fromName: process.env.FROM_NAME || 'Gold Fib Signals',
+      source: 'env'
+    };
+  }
+
+  return {
+    host: settings.smtp_host,
+    port: settings.smtp_port || 587,
+    user: settings.smtp_user,
+    pass: decryptedPass,
+    secure: settings.smtp_secure === 1,
+    fromEmail: settings.from_email || settings.smtp_user,
+    fromName: settings.from_name || 'Gold Fib Signals',
+    source: 'database'
+  };
+}
+
+/**
+ * Get SMTP settings for API response (with password masked)
+ * @returns {object} Safe SMTP settings for frontend
+ */
+export function getSmtpSettingsSafe() {
+  const settings = db.prepare('SELECT * FROM admin_notification_settings WHERE id = 1').get();
+  
+  if (!settings) {
+    return {
+      host: process.env.SMTP_HOST || '',
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      user: process.env.SMTP_USER || '',
+      hasPassword: !!(process.env.SMTP_PASS),
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
+      fromName: process.env.FROM_NAME || 'Gold Fib Signals',
+      source: 'env'
+    };
+  }
+
+  const hasPassword = !!(settings.smtp_pass_encrypted);
+  const hasDbSettings = settings.smtp_host && settings.smtp_user;
+
+  if (!hasDbSettings) {
+    return {
+      host: process.env.SMTP_HOST || '',
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      user: process.env.SMTP_USER || '',
+      hasPassword: !!(process.env.SMTP_PASS),
+      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+      fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER || '',
+      fromName: process.env.FROM_NAME || 'Gold Fib Signals',
+      source: 'env'
+    };
+  }
+
+  return {
+    host: settings.smtp_host,
+    port: settings.smtp_port || 587,
+    user: settings.smtp_user,
+    hasPassword,
+    secure: settings.smtp_secure === 1,
+    fromEmail: settings.from_email || settings.smtp_user,
+    fromName: settings.from_name || 'Gold Fib Signals',
+    source: 'database'
+  };
+}
+
+/**
+ * Update SMTP settings
+ * @param {object} settings - SMTP settings to update
+ * @returns {object} Updated settings (safe)
+ */
+export function updateSmtpSettings(settings) {
+  const fields = [];
+  const values = [];
+  
+  if (settings.host !== undefined) {
+    fields.push('smtp_host = ?');
+    values.push(settings.host);
+  }
+  if (settings.port !== undefined) {
+    fields.push('smtp_port = ?');
+    values.push(parseInt(settings.port) || 587);
+  }
+  if (settings.user !== undefined) {
+    fields.push('smtp_user = ?');
+    values.push(settings.user);
+  }
+  if (settings.pass !== undefined) {
+    fields.push('smtp_pass_encrypted = ?');
+    // Encrypt the password before storing
+    values.push(settings.pass ? encrypt(settings.pass) : '');
+  }
+  if (settings.secure !== undefined) {
+    fields.push('smtp_secure = ?');
+    values.push(settings.secure ? 1 : 0);
+  }
+  if (settings.fromEmail !== undefined) {
+    fields.push('from_email = ?');
+    values.push(settings.fromEmail);
+  }
+  if (settings.fromName !== undefined) {
+    fields.push('from_name = ?');
+    values.push(settings.fromName);
+  }
+  
+  if (fields.length === 0) {
+    return getSmtpSettingsSafe();
+  }
+  
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+  
+  const query = `UPDATE admin_notification_settings SET ${fields.join(', ')} WHERE id = 1`;
+  db.prepare(query).run(...values);
+  
+  // Clear transporter cache to force recreation with new settings
+  emailTransporter = null;
+  
+  return getSmtpSettingsSafe();
+}
+
+/**
+ * Test SMTP connection
+ * @returns {object} Test result
+ */
+export async function testSmtpConnection() {
+  const settings = getSmtpSettings();
+  
+  if (!settings.host || !settings.user) {
+    return { success: false, message: 'SMTP not configured. Please set host and username.' };
+  }
+
+  try {
+    const transporter = nodemailer.createTransporter({
+      host: settings.host,
+      port: settings.port,
+      secure: settings.secure,
+      auth: {
+        user: settings.user,
+        pass: settings.pass,
+      },
+    });
+
+    // Verify connection
+    await transporter.verify();
+    
+    return { success: true, message: 'SMTP connection successful' };
+  } catch (error) {
+    console.error('SMTP test failed:', error);
+    return { success: false, message: `Connection failed: ${error.message}` };
+  }
+}
+
+/**
+ * Send test email
+ * @param {string} toEmail - Recipient email
+ * @returns {object} Send result
+ */
+export async function sendTestEmail(toEmail) {
+  const settings = getSmtpSettings();
+  
+  if (!settings.host || !settings.user) {
+    return { success: false, message: 'SMTP not configured' };
+  }
+
+  try {
+    const transporter = nodemailer.createTransporter({
+      host: settings.host,
+      port: settings.port,
+      secure: settings.secure,
+      auth: {
+        user: settings.user,
+        pass: settings.pass,
+      },
+    });
+
+    const adminSettings = getAdminNotificationSettings();
+    const subject = `${adminSettings.email_subject_prefix || '[Gold Fib Signals]'} Test Email`;
+    
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🥇 SMTP Test Successful!</h1>
+    </div>
+    <div class="content">
+      <p>Hi,</p>
+      <p>This is a test email from Gold Fib Signals. Your SMTP configuration is working correctly!</p>
+      <p><strong>Configuration details:</strong></p>
+      <ul>
+        <li>Host: ${settings.host}</li>
+        <li>Port: ${settings.port}</li>
+        <li>Secure: ${settings.secure ? 'Yes' : 'No'}</li>
+        <li>From: ${settings.fromName} &lt;${settings.fromEmail}&gt;</li>
+      </ul>
+      <p>You're all set to receive email notifications!</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    await transporter.sendMail({
+      from: `"${settings.fromName}" <${settings.fromEmail}>`,
+      to: toEmail,
+      subject,
+      html,
+    });
+
+    return { success: true, message: `Test email sent to ${toEmail}` };
+  } catch (error) {
+    console.error('Test email failed:', error);
+    return { success: false, message: `Failed to send: ${error.message}` };
+  }
+}
+
 /**
  * Initialize database tables for secure email notifications
  */
@@ -72,9 +342,46 @@ export function initSecureEmailTables() {
       min_donation_amount INTEGER DEFAULT 0,
       email_subject_prefix TEXT DEFAULT '[Gold Fib Signals]',
       notification_email_template TEXT DEFAULT 'default',
+      smtp_host TEXT DEFAULT '',
+      smtp_port INTEGER DEFAULT 587,
+      smtp_user TEXT DEFAULT '',
+      smtp_pass_encrypted TEXT DEFAULT '',
+      smtp_secure INTEGER DEFAULT 1,
+      from_email TEXT DEFAULT '',
+      from_name TEXT DEFAULT 'Gold Fib Signals',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: Add SMTP columns if they don't exist (for existing databases)
+  try {
+    const columns = db.prepare("PRAGMA table_info(admin_notification_settings)").all();
+    const columnNames = columns.map(col => col.name);
+
+    if (!columnNames.includes('smtp_host')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN smtp_host TEXT DEFAULT ''`);
+    }
+    if (!columnNames.includes('smtp_port')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN smtp_port INTEGER DEFAULT 587`);
+    }
+    if (!columnNames.includes('smtp_user')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN smtp_user TEXT DEFAULT ''`);
+    }
+    if (!columnNames.includes('smtp_pass_encrypted')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN smtp_pass_encrypted TEXT DEFAULT ''`);
+    }
+    if (!columnNames.includes('smtp_secure')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN smtp_secure INTEGER DEFAULT 1`);
+    }
+    if (!columnNames.includes('from_email')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN from_email TEXT DEFAULT ''`);
+    }
+    if (!columnNames.includes('from_name')) {
+      db.exec(`ALTER TABLE admin_notification_settings ADD COLUMN from_name TEXT DEFAULT 'Gold Fib Signals'`);
+    }
+  } catch (migrationError) {
+    console.log('SMTP columns migration check completed (may already exist)');
+  }
 
   // Email audit log table
   db.exec(`
@@ -652,6 +959,7 @@ export function updateAdminNotificationSettings(updates) {
 
 /**
  * Get or create email transporter
+ * Uses database settings with fallback to environment variables
  * @returns {object} Nodemailer transporter
  */
 function getTransporter() {
@@ -659,19 +967,22 @@ function getTransporter() {
     return emailTransporter;
   }
 
-  const settings = db.prepare('SELECT * FROM email_settings WHERE id = 1').get();
+  const settings = getSmtpSettings();
   
-  if (!settings || !settings.enabled || !settings.smtpHost) {
+  if (!settings.host || !settings.user) {
+    console.log('Email not configured: missing SMTP host or user');
     return null;
   }
 
+  console.log(`Creating email transporter for ${settings.host}:${settings.port} (secure: ${settings.secure})`);
+  
   emailTransporter = nodemailer.createTransporter({
-    host: settings.smtpHost,
-    port: settings.smtpPort,
-    secure: settings.smtpPort === 465,
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
     auth: {
-      user: settings.smtpUser,
-      pass: settings.smtpPass,
+      user: settings.user,
+      pass: settings.pass,
     },
   });
 
@@ -1062,4 +1373,9 @@ export default {
   getAuditLog,
   getSecureEmailStats,
   checkRateLimit,
+  getSmtpSettings,
+  getSmtpSettingsSafe,
+  updateSmtpSettings,
+  testSmtpConnection,
+  sendTestEmail,
 };

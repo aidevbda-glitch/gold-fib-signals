@@ -18,10 +18,18 @@ import {
   ChevronRight,
   Bell,
   Mail,
-  TestTube
+  TestTube,
+  Send,
+  Settings
 } from 'lucide-react';
 import { EmailSettingsPanel } from '../components/EmailSettingsPanel';
 import { PendingRequestsPanel } from '../components/PendingRequestsPanel';
+import { 
+  getSmtpSettings, 
+  updateSmtpSettings, 
+  testSmtpConnection,
+  type SmtpSettings 
+} from '../services/SmtpService';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -111,6 +119,22 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
+  // SMTP settings state
+  const [smtpSettings, setSmtpSettings] = useState<SmtpSettings | null>(null);
+  const [smtpForm, setSmtpForm] = useState({
+    host: '',
+    port: 587,
+    user: '',
+    pass: '',
+    secure: true,
+    fromEmail: '',
+    fromName: 'Gold Fib Signals',
+  });
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [testingSmtpConnection, setTestingSmtpConnection] = useState(false);
+  const [smtpMessage, setSmtpMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   useEffect(() => {
     checkAuthStatus();
   }, [sessionId]);
@@ -135,12 +159,13 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
 
   const loadSettings = async () => {
     try {
-      const [adRes, goalRes, notifRes] = await Promise.all([
+      const [adRes, goalRes, notifRes, smtpRes] = await Promise.all([
         fetch(`${API_BASE}/ads/settings`),
         fetch(`${API_BASE}/donations/goal`),
         fetch(`${API_BASE}/admin/notification-settings`, {
           headers: sessionId ? { 'X-Admin-Session': sessionId } : {}
-        })
+        }),
+        sessionId ? getSmtpSettings(sessionId) : Promise.resolve(null)
       ]);
       
       if (adRes.ok) {
@@ -156,6 +181,18 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
       if (notifRes.ok) {
         const data = await notifRes.json();
         setNotificationForm(data.data);
+      }
+      if (smtpRes) {
+        setSmtpSettings(smtpRes);
+        setSmtpForm({
+          host: smtpRes.host || '',
+          port: smtpRes.port || 587,
+          user: smtpRes.user || '',
+          pass: '', // Don't populate password for security
+          secure: smtpRes.secure ?? true,
+          fromEmail: smtpRes.fromEmail || '',
+          fromName: smtpRes.fromName || 'Gold Fib Signals',
+        });
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -445,6 +482,73 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
       alert('Failed to test SMTP configuration');
     } finally {
       setTestingSmtp(false);
+    }
+  };
+
+  // SMTP Configuration handlers
+  const handleSaveSmtpSettings = async () => {
+    if (!sessionId) return;
+
+    try {
+      setSavingSmtp(true);
+      setSmtpMessage(null);
+
+      // Validate required fields
+      if (!smtpForm.host.trim()) {
+        setSmtpMessage({ type: 'error', text: 'SMTP Host is required' });
+        return;
+      }
+      if (!smtpForm.user.trim()) {
+        setSmtpMessage({ type: 'error', text: 'SMTP Username is required' });
+        return;
+      }
+      if (smtpForm.port < 1 || smtpForm.port > 65535) {
+        setSmtpMessage({ type: 'error', text: 'Invalid port number' });
+        return;
+      }
+
+      const updated = await updateSmtpSettings(sessionId, {
+        host: smtpForm.host,
+        port: smtpForm.port,
+        user: smtpForm.user,
+        pass: smtpForm.pass || undefined, // Only send if provided
+        secure: smtpForm.secure,
+        fromEmail: smtpForm.fromEmail,
+        fromName: smtpForm.fromName,
+      });
+
+      setSmtpSettings(updated);
+      setSmtpMessage({ type: 'success', text: 'SMTP settings saved successfully!' });
+      
+      // Clear password field after save
+      setSmtpForm(prev => ({ ...prev, pass: '' }));
+    } catch (error) {
+      console.error('Failed to save SMTP settings:', error);
+      setSmtpMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to save settings' });
+    } finally {
+      setSavingSmtp(false);
+    }
+  };
+
+  const handleTestSmtpConnection = async () => {
+    if (!sessionId) return;
+
+    try {
+      setTestingSmtpConnection(true);
+      setSmtpMessage(null);
+
+      const result = await testSmtpConnection(sessionId);
+      
+      if (result.success) {
+        setSmtpMessage({ type: 'success', text: `✓ ${result.message}` });
+      } else {
+        setSmtpMessage({ type: 'error', text: `✗ ${result.message}` });
+      }
+    } catch (error) {
+      console.error('Failed to test SMTP:', error);
+      setSmtpMessage({ type: 'error', text: error instanceof Error ? error.message : 'Test failed' });
+    } finally {
+      setTestingSmtpConnection(false);
     }
   };
 
@@ -967,6 +1071,186 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
                 />
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* SMTP Configuration */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-cyan-400" />
+            Email Configuration (SMTP)
+            {smtpSettings?.source === 'database' && (
+              <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full">
+                Custom
+              </span>
+            )}
+            {smtpSettings?.source === 'env' && (
+              <span className="px-2 py-0.5 bg-gray-600 text-gray-300 text-xs rounded-full">
+                Default
+              </span>
+            )}
+          </h2>
+
+          {/* Source indicator */}
+          <div className="mb-4 p-3 bg-gray-700/30 rounded-lg">
+            <p className="text-sm text-gray-400">
+              {smtpSettings?.source === 'database' 
+                ? '✓ Using custom SMTP configuration from database' 
+                : 'Using SMTP configuration from environment variables. Save settings below to override.'}
+            </p>
+          </div>
+
+          {/* SMTP Form */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">SMTP Host</label>
+              <input
+                type="text"
+                value={smtpForm.host}
+                onChange={(e) => setSmtpForm({ ...smtpForm, host: e.target.value })}
+                placeholder="smtp.gmail.com"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">SMTP Port</label>
+              <input
+                type="number"
+                value={smtpForm.port}
+                onChange={(e) => setSmtpForm({ ...smtpForm, port: parseInt(e.target.value) || 587 })}
+                placeholder="587"
+                min={1}
+                max={65535}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">SMTP Username</label>
+              <input
+                type="text"
+                value={smtpForm.user}
+                onChange={(e) => setSmtpForm({ ...smtpForm, user: e.target.value })}
+                placeholder="your@email.com"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                SMTP Password
+                {smtpSettings?.hasPassword && !smtpForm.pass && (
+                  <span className="ml-2 text-xs text-green-400">(•••••• saved)</span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type={showSmtpPassword ? 'text' : 'password'}
+                  value={smtpForm.pass}
+                  onChange={(e) => setSmtpForm({ ...smtpForm, pass: e.target.value })}
+                  placeholder={smtpSettings?.hasPassword ? 'Enter new password to change' : 'Enter password'}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                >
+                  {showSmtpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">From Email Address</label>
+              <input
+                type="email"
+                value={smtpForm.fromEmail}
+                onChange={(e) => setSmtpForm({ ...smtpForm, fromEmail: e.target.value })}
+                placeholder="noreply@example.com"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">From Name</label>
+              <input
+                type="text"
+                value={smtpForm.fromName}
+                onChange={(e) => setSmtpForm({ ...smtpForm, fromName: e.target.value })}
+                placeholder="Gold Fib Signals"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          </div>
+
+          {/* Use TLS Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg mb-4">
+            <div>
+              <p className="font-medium text-sm">Use TLS/SSL</p>
+              <p className="text-xs text-gray-400">Enable secure connection (recommended)</p>
+            </div>
+            <button
+              onClick={() => setSmtpForm({ ...smtpForm, secure: !smtpForm.secure })}
+              className={`w-12 h-6 rounded-full transition-colors relative ${
+                smtpForm.secure ? 'bg-green-500' : 'bg-gray-600'
+              }`}
+            >
+              <span className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition-transform ${
+                smtpForm.secure ? 'translate-x-6' : 'translate-x-0.5'
+              }`} />
+            </button>
+          </div>
+
+          {/* Status message */}
+          {smtpMessage && (
+            <div className={`mb-4 p-3 rounded-lg ${
+              smtpMessage.type === 'success' 
+                ? 'bg-green-500/20 border border-green-500/30 text-green-400' 
+                : 'bg-red-500/20 border border-red-500/30 text-red-400'
+            }`}>
+              <p className="text-sm">{smtpMessage.text}</p>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleSaveSmtpSettings}
+              disabled={savingSmtp}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              {savingSmtp ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Settings className="w-4 h-4" />
+                  Save SMTP Settings
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleTestSmtpConnection}
+              disabled={testingSmtpConnection}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              {testingSmtpConnection ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Test Connection
+                </>
+              )}
+            </button>
           </div>
         </section>
 
