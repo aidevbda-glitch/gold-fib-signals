@@ -12,11 +12,16 @@ let emailConfig = null;
  */
 export function initEmailSettings() {
   // Insert default settings if not exists (table created by emailNotificationService.js)
-  const insertDefault = db.prepare(`
-    INSERT OR IGNORE INTO admin_notification_settings (id, admin_email, require_approval, require_donation, min_donation_amount)
-    VALUES (1, '', 1, 0, 0)
-  `);
-  insertDefault.run();
+  try {
+    const insertDefault = db.prepare(`
+      INSERT OR IGNORE INTO admin_notification_settings (id, admin_email, require_approval, require_donation, min_donation_amount)
+      VALUES (1, '', 1, 0, 0)
+    `);
+    insertDefault.run();
+  } catch (error) {
+    // Table may not exist yet - emailNotificationService.js will create it and set defaults
+    console.log('ℹ️  admin_notification_settings table not ready, will be initialized by emailNotificationService.js');
+  }
 }
 
 /**

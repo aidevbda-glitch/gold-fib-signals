@@ -1880,11 +1880,11 @@ initMacroTables();
 initProviderTables();
 seedDefaultProviders();
 
-// Initialize email settings
-initEmailSettings();
-
-// Initialize secure email notification tables
+// Initialize secure email notification tables first (creates admin_notification_settings)
 initSecureEmailTables();
+
+// Initialize email settings (uses admin_notification_settings)
+initEmailSettings();
 
 // ==================== EMAIL NOTIFICATION ENDPOINTS ====================
 
