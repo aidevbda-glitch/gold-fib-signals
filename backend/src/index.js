@@ -839,8 +839,8 @@ app.get('/api/polling/config', (req, res) => {
  */
 app.get('/api/macro/technical', async (req, res) => {
   try {
-    // Fetch recent price data to calculate indicators
-    const history = getPriceHistory(100);
+    // Fetch recent price data to calculate indicators - need 300 for proper MA200
+    const history = getPriceHistory(300);
     
     if (history.length < 50) {
       return res.json({
@@ -871,6 +871,7 @@ app.get('/api/macro/technical', async (req, res) => {
     const ma10 = calculateSMA(closes, 10);
     const ma20 = calculateSMA(closes, 20);
     const ma50 = calculateSMA(closes, 50);
+    const ma200 = history.length >= 200 ? calculateSMA(closes, 200) : null;
     const ema5 = calculateEMA(closes, 5);
     const ema10 = calculateEMA(closes, 10);
     const ema20 = calculateEMA(closes, 20);
@@ -885,6 +886,32 @@ app.get('/api/macro/technical', async (req, res) => {
       if (ma !== null) {
         if (currentPrice > ma) maBuyCount++;
         else maSellCount++;
+      }
+    }
+
+    // Golden/Death Cross Detection
+    let goldenCross = false;
+    let deathCross = false;
+    let ma200Trend = 'neutral';
+    
+    if (ma200 !== null) {
+      // Determine 50/200 trend
+      if (ma50 > ma200) {
+        ma200Trend = 'bullish';
+        maBuyCount += 2; // Extra weight for bullish 50/200
+      } else {
+        ma200Trend = 'bearish';
+        maSellCount += 2; // Extra weight for bearish 50/200
+      }
+      
+      // Check for cross (compare with yesterday's MAs)
+      if (history.length >= 201) {
+        const prevCloses = closes.slice(0, -1);
+        const prevMa50 = calculateSMA(prevCloses, 50);
+        const prevMa200 = calculateSMA(prevCloses, 200);
+        
+        goldenCross = prevMa50 <= prevMa200 && ma50 > ma200;
+        deathCross = prevMa50 >= prevMa200 && ma50 < ma200;
       }
     }
 
@@ -910,10 +937,27 @@ app.get('/api/macro/technical', async (req, res) => {
       else oscNeutralCount++;
     }
 
-    // Momentum
+    // Momentum - check for steep sell-off (price vs MA50 gap)
     const momentum = currentPrice - closes[closes.length - 10];
-    if (momentum > 0) oscBuyCount++;
-    else oscSellCount++;
+    const ma50Gap = ma50 ? ((currentPrice - ma50) / ma50) * 100 : 0;
+    
+    // If price is significantly below MA50 (>5%), it's a steep sell-off (bearish)
+    // If significantly above (>5%), it's overextended (caution)
+    if (momentum > 0) {
+      if (ma50Gap < -5) {
+        // Price well below MA50 despite positive momentum = bearish divergence
+        oscSellCount += 2;
+      } else {
+        oscBuyCount++;
+      }
+    } else {
+      if (ma50Gap < -5) {
+        // Strong bearish momentum + below MA50
+        oscSellCount += 2;
+      } else {
+        oscSellCount++;
+      }
+    }
 
     // Determine recommendations
     const maTotal = maBuyCount + maSellCount;
@@ -924,15 +968,20 @@ app.get('/api/macro/technical', async (req, res) => {
     const oscRec = oscBuyCount > oscSellCount ? 'BUY' :
                    oscSellCount > oscBuyCount ? 'SELL' : 'NEUTRAL';
 
-    // Overall score (-100 to 100)
-    const maScore = ((maBuyCount - maSellCount) / maTotal) * 50;
-    const oscScore = ((oscBuyCount - oscSellCount) / oscTotal) * 50;
-    const overallScore = Math.round(maScore + oscScore);
+    // Overall score with MA200 consideration
+    let overallScore = Math.round(((maBuyCount - maSellCount) / maTotal) * 50 + 
+                                   ((oscBuyCount - oscSellCount) / oscTotal) * 50);
+    
+    // Cap score if in strong downtrend (price well below MA50 and MA200)
+    if (ma200 && currentPrice < ma200 && currentPrice < ma50 && ma50 < ma200) {
+      // All bearish alignment - cap the score
+      overallScore = Math.min(overallScore, 20); // Max NEUTRAL in strong downtrend
+    }
 
-    const overallRec = overallScore > 50 ? 'STRONG_BUY' :
-                       overallScore > 20 ? 'BUY' :
-                       overallScore < -50 ? 'STRONG_SELL' :
-                       overallScore < -20 ? 'SELL' : 'NEUTRAL';
+    const overallRec = overallScore >= 75 ? 'STRONG_BUY' :
+                       overallScore >= 60 ? 'BUY' :
+                       overallScore >= 40 ? 'NEUTRAL' :
+                       overallScore >= 25 ? 'SELL' : 'STRONG_SELL';
 
     res.json({
       movingAverages: {
@@ -961,6 +1010,11 @@ app.get('/api/macro/technical', async (req, res) => {
         currentPrice,
         ma20: ma20 ? Math.round(ma20 * 100) / 100 : null,
         ma50: ma50 ? Math.round(ma50 * 100) / 100 : null,
+        ma200: ma200 ? Math.round(ma200 * 100) / 100 : null,
+        goldenCross,
+        deathCross,
+        ma50Gap: Math.round(ma50Gap * 100) / 100,
+        ma200Trend,
       }
     });
   } catch (error) {
