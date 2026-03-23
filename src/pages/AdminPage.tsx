@@ -229,7 +229,9 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
         setNeedsMfa(true);
         setAdminStatus(statusData.data);
       } else {
-        await checkAuthStatus();
+        // MFA not required - clear needsMfa and let useEffect handle auth check
+        setNeedsMfa(false);
+        // Auth status will be checked by useEffect when sessionId changes
       }
     } catch (error) {
       setLoginError('Connection failed');
