@@ -342,33 +342,33 @@ export function EmailSettingsPanel() {
         </div>
 
         {/* Add Subscriber */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
           <input
             type="email"
             value={newSubscriberEmail}
             onChange={(e) => setNewSubscriberEmail(e.target.value)}
             placeholder="Enter email address"
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            className="flex-1 min-w-0 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
           />
           <input
             type="text"
             value={newSubscriberName}
             onChange={(e) => setNewSubscriberName(e.target.value)}
             placeholder="Name (optional)"
-            className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+            className="flex-1 min-w-0 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
           />
           <button
             onClick={addSubscriber}
             disabled={!newSubscriberEmail}
-            className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-500 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-500 disabled:opacity-50 flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             Add
           </button>
         </div>
 
-        {/* Subscribers Table */}
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-sm text-gray-400 border-b border-gray-700">
@@ -413,6 +413,43 @@ export function EmailSettingsPanel() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-3">
+          {subscribers.length === 0 ? (
+            <div className="py-4 text-center text-gray-500">
+              No subscribers yet
+            </div>
+          ) : (
+            subscribers.map((sub) => (
+              <div key={sub.id} className="bg-gray-700/30 rounded-lg p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-medium truncate">{sub.email}</p>
+                    {sub.name && (
+                      <p className="text-gray-400 text-sm">{sub.name}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => deleteSubscriber(sub.id)}
+                    className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg shrink-0"
+                    title="Delete subscriber"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className={`px-2 py-1 text-xs rounded-full ${sub.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                    {sub.enabled ? 'Active' : 'Inactive'}
+                  </span>
+                  <span className="text-gray-400 text-sm">
+                    {new Date(sub.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
