@@ -1,96 +1,63 @@
 import nodemailer from 'nodemailer';
 import db from './database.js';
+import { decrypt, hashEmail } from './encryptionService.js';
 
 // Email configuration store
 let emailConfig = null;
 
 /**
  * Initialize email settings table
+ * NOTE: Tables are now created by emailNotificationService.js with encrypted storage
+ * This function only inserts default settings for backward compatibility
  */
 export function initEmailSettings() {
-  const createTable = db.prepare(`
-    CREATE TABLE IF NOT EXISTS email_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      smtpHost TEXT NOT NULL DEFAULT '',
-      smtpPort INTEGER NOT NULL DEFAULT 587,
-      smtpUser TEXT NOT NULL DEFAULT '',
-      smtpPass TEXT NOT NULL DEFAULT '',
-      fromEmail TEXT NOT NULL DEFAULT '',
-      fromName TEXT NOT NULL DEFAULT 'Gold Fib Signals',
-      enabled INTEGER NOT NULL DEFAULT 0,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  createTable.run();
-
-  // Create email subscribers table
-  const createSubscribersTable = db.prepare(`
-    CREATE TABLE IF NOT EXISTS email_subscribers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      name TEXT DEFAULT '',
-      enabled INTEGER NOT NULL DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  createSubscribersTable.run();
-
-  // Create email notifications log table
-  const createLogTable = db.prepare(`
-    CREATE TABLE IF NOT EXISTS email_notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      subscriber_email TEXT NOT NULL,
-      signal_id TEXT NOT NULL,
-      signal_type TEXT NOT NULL,
-      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT NOT NULL,
-      error_message TEXT
-    )
-  `);
-  createLogTable.run();
-
-  // Insert default settings if not exists
+  // Insert default settings if not exists (table created by emailNotificationService.js)
   const insertDefault = db.prepare(`
-    INSERT OR IGNORE INTO email_settings (id, smtpHost, smtpPort, smtpUser, smtpPass, fromEmail, fromName, enabled)
-    VALUES (1, '', 587, '', '', '', 'Gold Fib Signals', 0)
+    INSERT OR IGNORE INTO admin_notification_settings (id, admin_email, require_approval, require_donation, min_donation_amount)
+    VALUES (1, '', 1, 0, 0)
   `);
   insertDefault.run();
 }
 
 /**
- * Get email settings
+ * Get email settings (legacy - uses admin_notification_settings)
  */
 export function getEmailSettings() {
-  const stmt = db.prepare('SELECT * FROM email_settings WHERE id = 1');
-  return stmt.get();
+  const stmt = db.prepare('SELECT * FROM admin_notification_settings WHERE id = 1');
+  const settings = stmt.get();
+  if (!settings) return null;
+  
+  // Map new schema to legacy format
+  return {
+    id: 1,
+    smtpHost: '', // SMTP settings now from env vars
+    smtpPort: 587,
+    smtpUser: '',
+    smtpPass: '',
+    fromEmail: settings.admin_email || '',
+    fromName: settings.email_subject_prefix || 'Gold Fib Signals',
+    enabled: 1, // Always enabled if admin_email is set
+    require_approval: settings.require_approval,
+    require_donation: settings.require_donation,
+    updated_at: settings.updated_at
+  };
 }
 
 /**
- * Update email settings
+ * Update email settings (legacy)
  */
 export function updateEmailSettings(settings) {
   const stmt = db.prepare(`
-    UPDATE email_settings SET
-      smtpHost = ?,
-      smtpPort = ?,
-      smtpUser = ?,
-      smtpPass = ?,
-      fromEmail = ?,
-      fromName = ?,
-      enabled = ?,
+    UPDATE admin_notification_settings SET
+      admin_email = ?,
+      email_subject_prefix = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
   `);
   
   stmt.run(
-    settings.smtpHost || '',
-    settings.smtpPort || 587,
-    settings.smtpUser || '',
-    settings.smtpPass || '',
-    settings.fromEmail || '',
-    settings.fromName || 'Gold Fib Signals',
-    settings.enabled ? 1 : 0
+    settings.fromEmail || settings.admin_email || '',
+    settings.fromName || 'Gold Fib Signals'
   );
   
   // Clear cached config
@@ -149,56 +116,114 @@ function getTransporter() {
 }
 
 /**
- * Get all email subscribers
+ * Get all email subscribers (legacy - returns masked emails)
  */
 export function getEmailSubscribers() {
-  const stmt = db.prepare('SELECT * FROM email_subscribers ORDER BY created_at DESC');
-  return stmt.all();
+  const stmt = db.prepare(`
+    SELECT id, email_hash, email_encrypted, name, status, 
+           verification_method, created_at, updated_at
+    FROM email_subscribers 
+    ORDER BY created_at DESC
+  `);
+  const rows = stmt.all();
+  
+  return rows.map(row => {
+    // Return masked email for privacy
+    const email = decrypt(row.email_encrypted) || '***';
+    const masked = email.length > 6 
+      ? email.substring(0, 3) + '***' + email.substring(email.length - 3)
+      : '***';
+    
+    return {
+      id: row.id,
+      email: masked,
+      emailHash: row.email_hash,
+      name: row.name,
+      enabled: row.status === 'active' ? 1 : 0,
+      status: row.status,
+      verification_method: row.verification_method,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  });
 }
 
 /**
- * Get enabled email subscribers only
+ * Get enabled/active email subscribers only
  */
 export function getEnabledSubscribers() {
-  const stmt = db.prepare('SELECT * FROM email_subscribers WHERE enabled = 1');
-  return stmt.all();
+  const stmt = db.prepare(`
+    SELECT id, email_hash, email_encrypted, name, status
+    FROM email_subscribers 
+    WHERE status = 'active'
+  `);
+  const rows = stmt.all();
+  
+  return rows.map(row => ({
+    id: row.id,
+    email_hash: row.email_hash,
+    email: decrypt(row.email_encrypted), // Decrypt for sending emails
+    name: row.name,
+    enabled: 1
+  }));
 }
 
 /**
- * Add email subscriber
+ * Add email subscriber (legacy - redirects to secure subscription request)
+ * Note: This now requires admin approval in the new system
  */
 export function addEmailSubscriber(email, name = '') {
-  const stmt = db.prepare(`
-    INSERT INTO email_subscribers (email, name, enabled)
-    VALUES (?, ?, 1)
-    ON CONFLICT(email) DO UPDATE SET
-      name = excluded.name,
-      updated_at = CURRENT_TIMESTAMP
-  `);
-  stmt.run(email, name);
-  return { email, name, enabled: 1 };
+  // Hash the email for lookup
+  const emailHash = hashEmail(email);
+  
+  // Check if already exists
+  const existing = db.prepare('SELECT status FROM email_subscribers WHERE email_hash = ?').get(emailHash);
+  if (existing) {
+    return { 
+      email, 
+      name, 
+      enabled: existing.status === 'active' ? 1 : 0,
+      status: existing.status,
+      note: 'Subscriber already exists'
+    };
+  }
+  
+  // Return info that they need to use the secure subscription flow
+  return { 
+    email, 
+    name, 
+    enabled: 0,
+    status: 'pending',
+    note: 'Use POST /api/notifications/request to securely subscribe with approval'
+  };
 }
 
 /**
- * Update email subscriber
+ * Update email subscriber (legacy - limited functionality)
  */
 export function updateEmailSubscriber(id, updates) {
   const subscriber = db.prepare('SELECT * FROM email_subscribers WHERE id = ?').get(id);
   if (!subscriber) return null;
 
+  // Only allow updating name and status (not email for security)
   const stmt = db.prepare(`
     UPDATE email_subscribers SET
-      email = ?,
-      name = ?,
-      enabled = ?,
+      name = COALESCE(?, name),
+      status = CASE 
+        WHEN ? = 1 THEN 'active' 
+        WHEN ? = 0 THEN 'unsubscribed'
+        ELSE status 
+      END,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
   
+  const enabledValue = updates.enabled !== undefined ? updates.enabled : (subscriber.status === 'active' ? 1 : 0);
+  
   stmt.run(
-    updates.email || subscriber.email,
-    updates.name !== undefined ? updates.name : subscriber.name,
-    updates.enabled !== undefined ? (updates.enabled ? 1 : 0) : subscriber.enabled,
+    updates.name,
+    enabledValue,
+    enabledValue,
     id
   );
   
@@ -206,7 +231,7 @@ export function updateEmailSubscriber(id, updates) {
 }
 
 /**
- * Delete email subscriber
+ * Delete email subscriber (legacy)
  */
 export function deleteEmailSubscriber(id) {
   const stmt = db.prepare('DELETE FROM email_subscribers WHERE id = ?');
@@ -247,23 +272,31 @@ export async function sendSignalNotification(signal) {
         html: emailBody,
       });
 
-      // Log successful send
+      // Log successful send to audit log
       const logStmt = db.prepare(`
-        INSERT INTO email_notifications (subscriber_email, signal_id, signal_type, status)
-        VALUES (?, ?, ?, 'sent')
+        INSERT INTO email_audit_log (action, email_hash, details, ip_address, user_agent)
+        VALUES (?, ?, ?, '', '')
       `);
-      logStmt.run(subscriber.email, signal.id, signal.type);
+      logStmt.run(
+        'signal_notification_sent', 
+        subscriber.email_hash,
+        JSON.stringify({ signal_id: signal.id, signal_type: signal.type, status: 'sent' })
+      );
       
       sent++;
     } catch (error) {
-      console.error(`Failed to send email to ${subscriber.email}:`, error);
+      console.error(`Failed to send email to subscriber:`, error);
       
-      // Log failed send
+      // Log failed send to audit log
       const logStmt = db.prepare(`
-        INSERT INTO email_notifications (subscriber_email, signal_id, signal_type, status, error_message)
-        VALUES (?, ?, ?, 'failed', ?)
+        INSERT INTO email_audit_log (action, email_hash, details, ip_address, user_agent)
+        VALUES (?, ?, ?, '', '')
       `);
-      logStmt.run(subscriber.email, signal.id, signal.type, error.message);
+      logStmt.run(
+        'signal_notification_failed',
+        subscriber.email_hash,
+        JSON.stringify({ signal_id: signal.id, signal_type: signal.type, status: 'failed', error: error.message })
+      );
       
       failed++;
     }
@@ -359,21 +392,27 @@ function generateSignalEmail(signal) {
 }
 
 /**
- * Get email notification statistics
+ * Get email notification statistics (legacy - uses new schema)
  */
 export function getEmailStats() {
-  const totalSent = db.prepare("SELECT COUNT(*) as count FROM email_notifications WHERE status = 'sent'").get();
-  const totalFailed = db.prepare("SELECT COUNT(*) as count FROM email_notifications WHERE status = 'failed'").get();
-  const recentNotifications = db.prepare(`
-    SELECT * FROM email_notifications 
-    ORDER BY sent_at DESC 
-    LIMIT 50
-  `).all();
+  // Count active subscribers
+  const activeCount = db.prepare("SELECT COUNT(*) as count FROM email_subscribers WHERE status = 'active'").get();
+  const pendingCount = db.prepare("SELECT COUNT(*) as count FROM email_subscribers WHERE status = 'pending'").get();
+  const unsubscribedCount = db.prepare("SELECT COUNT(*) as count FROM email_subscribers WHERE status = 'unsubscribed'").get();
+  
+  // Count pending requests
+  const pendingRequests = db.prepare("SELECT COUNT(*) as count FROM subscription_requests WHERE status = 'pending'").get();
   
   return {
-    totalSent: totalSent.count,
-    totalFailed: totalFailed.count,
-    recentNotifications,
+    totalSubscribers: activeCount.count + pendingCount.count + unsubscribedCount.count,
+    activeSubscribers: activeCount.count,
+    pendingSubscribers: pendingCount.count,
+    unsubscribedSubscribers: unsubscribedCount.count,
+    pendingRequests: pendingRequests.count,
+    // Legacy fields
+    totalSent: 0, // No longer tracked in legacy format
+    totalFailed: 0,
+    recentNotifications: []
   };
 }
 

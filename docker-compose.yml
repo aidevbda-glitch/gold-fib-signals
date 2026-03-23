@@ -24,6 +24,8 @@ services:
     volumes:
       # Persist SQLite database
       - gold-data:/app/data
+    env_file:
+      - ./backend/.env
     environment:
       - NODE_ENV=production
       - PORT=3001
