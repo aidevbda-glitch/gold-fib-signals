@@ -92,6 +92,18 @@ import {
   getAdminStatus
 } from './adminAuthService.js';
 import QRCode from 'qrcode';
+import {
+  initEmailSettings,
+  getEmailSettings,
+  updateEmailSettings,
+  testEmailConfiguration,
+  getEmailSubscribers,
+  addEmailSubscriber,
+  updateEmailSubscriber,
+  deleteEmailSubscriber,
+  sendSignalNotification,
+  getEmailStats,
+} from './emailService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -356,16 +368,26 @@ app.get('/api/price/database', (req, res) => {
  * POST /api/signals
  * Save a new trading signal
  */
-app.post('/api/signals', (req, res) => {
+app.post('/api/signals', async (req, res) => {
   try {
     const signal = req.body;
-    
+
     // Validate required fields
     if (!signal.id || !signal.type || !signal.price) {
       return res.status(400).json({ error: 'Missing required fields: id, type, price' });
     }
 
     const saved = saveSignal(signal);
+
+    // Send email notification asynchronously (don't wait for it)
+    sendSignalNotification(signal).then(result => {
+      if (result.sent > 0) {
+        console.log(`📧 Email notification sent to ${result.sent} subscribers for ${signal.type} signal`);
+      }
+    }).catch(err => {
+      console.error('Failed to send email notification:', err);
+    });
+
     res.status(201).json(saved);
   } catch (error) {
     console.error('Error saving signal:', error);
@@ -1843,6 +1865,168 @@ initMacroTables();
 // Initialize provider management tables
 initProviderTables();
 seedDefaultProviders();
+
+// Initialize email settings
+initEmailSettings();
+
+// ==================== EMAIL NOTIFICATION ENDPOINTS ====================
+
+/**
+ * GET /api/email/settings
+ * Get email settings (admin only)
+ */
+app.get('/api/email/settings', requireAdmin, (req, res) => {
+  try {
+    const settings = getEmailSettings();
+    // Don't return the password
+    const { smtpPass, ...safeSettings } = settings;
+    res.json({ data: { ...safeSettings, hasPassword: !!smtpPass } });
+  } catch (error) {
+    console.error('Error fetching email settings:', error);
+    res.status(500).json({ error: 'Failed to fetch email settings' });
+  }
+});
+
+/**
+ * PUT /api/email/settings
+ * Update email settings (admin only)
+ */
+app.put('/api/email/settings', requireAdmin, (req, res) => {
+  try {
+    const settings = updateEmailSettings(req.body);
+    const { smtpPass, ...safeSettings } = settings;
+    res.json({ data: { ...safeSettings, hasPassword: !!smtpPass } });
+  } catch (error) {
+    console.error('Error updating email settings:', error);
+    res.status(500).json({ error: 'Failed to update email settings' });
+  }
+});
+
+/**
+ * POST /api/email/test
+ * Test email configuration (admin only)
+ */
+app.post('/api/email/test', requireAdmin, async (req, res) => {
+  try {
+    const result = await testEmailConfiguration(req.body);
+    res.json(result);
+  } catch (error) {
+    console.error('Error testing email:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /api/email/subscribers
+ * Get all email subscribers (admin only)
+ */
+app.get('/api/email/subscribers', requireAdmin, (req, res) => {
+  try {
+    const subscribers = getEmailSubscribers();
+    res.json({ data: subscribers });
+  } catch (error) {
+    console.error('Error fetching subscribers:', error);
+    res.status(500).json({ error: 'Failed to fetch subscribers' });
+  }
+});
+
+/**
+ * POST /api/email/subscribers
+ * Add email subscriber (admin only)
+ */
+app.post('/api/email/subscribers', requireAdmin, (req, res) => {
+  try {
+    const { email, name } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const subscriber = addEmailSubscriber(email, name);
+    res.status(201).json({ data: subscriber });
+  } catch (error) {
+    console.error('Error adding subscriber:', error);
+    res.status(500).json({ error: 'Failed to add subscriber' });
+  }
+});
+
+/**
+ * PUT /api/email/subscribers/:id
+ * Update email subscriber (admin only)
+ */
+app.put('/api/email/subscribers/:id', requireAdmin, (req, res) => {
+  try {
+    const subscriber = updateEmailSubscriber(req.params.id, req.body);
+    if (!subscriber) {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    res.json({ data: subscriber });
+  } catch (error) {
+    console.error('Error updating subscriber:', error);
+    res.status(500).json({ error: 'Failed to update subscriber' });
+  }
+});
+
+/**
+ * DELETE /api/email/subscribers/:id
+ * Delete email subscriber (admin only)
+ */
+app.delete('/api/email/subscribers/:id', requireAdmin, (req, res) => {
+  try {
+    const deleted = deleteEmailSubscriber(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Subscriber not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting subscriber:', error);
+    res.status(500).json({ error: 'Failed to delete subscriber' });
+  }
+});
+
+/**
+ * GET /api/email/stats
+ * Get email notification statistics (admin only)
+ */
+app.get('/api/email/stats', requireAdmin, (req, res) => {
+  try {
+    const stats = getEmailStats();
+    res.json({ data: stats });
+  } catch (error) {
+    console.error('Error fetching email stats:', error);
+    res.status(500).json({ error: 'Failed to fetch email stats' });
+  }
+});
+
+/**
+ * POST /api/email/send-test
+ * Send test signal notification (admin only)
+ */
+app.post('/api/email/send-test', requireAdmin, async (req, res) => {
+  try {
+    const testSignal = {
+      id: 'test-' + Date.now(),
+      type: req.body.type || 'BUY',
+      strength: req.body.strength || 'STRONG',
+      price: req.body.price || 4500,
+      timestamp: Date.now(),
+      fibLevel: '61.8%',
+      fibValue: 4450,
+      explanation: 'This is a test signal to verify email notifications are working correctly.',
+      technicalDetails: {
+        currentPrice: 4500,
+        nearestFibLevel: '61.8%',
+        distanceToLevel: 50,
+        trendDirection: 'UP',
+        priceAction: 'Bullish momentum',
+      },
+    };
+    
+    const result = await sendSignalNotification(testSignal);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('Error sending test email:', error);
+    res.status(500).json({ error: 'Failed to send test email' });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`

@@ -17,6 +17,7 @@ import {
   Server,
   ChevronRight
 } from 'lucide-react';
+import { EmailSettingsPanel } from '../components/EmailSettingsPanel';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -882,6 +883,9 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
             ))}
           </div>
         </section>
+
+        {/* Email Notifications */}
+        <EmailSettingsPanel />
       </main>
     </div>
   );
