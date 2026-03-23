@@ -49,9 +49,9 @@ export function LastSignalBanner() {
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-400">
-              <span>${lastSignal.price.toFixed(2)}</span>
+              <span>${lastSignal.price?.toFixed(2) ?? 'N/A'}</span>
               <span>•</span>
-              <span>Fib {lastSignal.fibLevel}</span>
+              <span>Fib {lastSignal.fibLevel ?? 'N/A'}</span>
             </div>
           </div>
         </div>
@@ -81,7 +81,7 @@ export function LastSignalBanner() {
           </span>
           <span>•</span>
           <span>
-            Distance to Fib: ${lastSignal.technicalDetails.distanceToLevel.toFixed(2)}
+            Distance to Fib: ${lastSignal.technicalDetails?.distanceToLevel?.toFixed(2) ?? 'N/A'}
           </span>
         </div>
       )}

@@ -28,7 +28,8 @@ export function IntradayChart() {
   // Check if we're viewing data from a different provider than what's active
   const hasProviderMismatch = activeProviderId && dataProvider && dataProvider !== activeProviderId;
 
-  if (intradayData.length === 0) {
+  // Null/undefined guards for intraday data
+  if (!intradayData || intradayData.length === 0) {
     return (
       <div className="bg-gray-800 rounded-xl p-6 h-80 flex items-center justify-center">
         <div className="text-center">
@@ -49,15 +50,19 @@ export function IntradayChart() {
     'today': 24 * 60 * 60 * 1000,
   };
 
-  const filteredData = intradayData
-    .filter(tick => tick.timestamp > now - filterMs[viewMode])
+  // Validate and filter intraday data
+  const filteredData = (intradayData || [])
+    .filter(tick => tick && typeof tick.timestamp === 'number' && tick.timestamp > now - filterMs[viewMode])
     .map(tick => ({
       time: tick.timestamp,
-      bid: tick.bid,
-      ask: tick.ask,
-      mid: tick.mid,
-      spread: tick.spread,
-    }));
+      bid: typeof tick.bid === 'number' ? tick.bid : 0,
+      ask: typeof tick.ask === 'number' ? tick.ask : 0,
+      mid: typeof tick.mid === 'number' ? tick.mid : 
+           (typeof tick.bid === 'number' && typeof tick.ask === 'number' ? (tick.bid + tick.ask) / 2 : 0),
+      spread: typeof tick.spread === 'number' ? tick.spread : 
+              (typeof tick.bid === 'number' && typeof tick.ask === 'number' ? tick.ask - tick.bid : 0),
+    }))
+    .filter(tick => tick.bid > 0 && tick.ask > 0); // Only keep valid price data
 
   if (filteredData.length === 0) {
     return (
@@ -67,18 +72,18 @@ export function IntradayChart() {
     );
   }
 
-  // Calculate stats
-  const bidHigh = Math.max(...filteredData.map(d => d.bid));
-  const bidLow = Math.min(...filteredData.map(d => d.bid));
-  const askHigh = Math.max(...filteredData.map(d => d.ask));
-  const askLow = Math.min(...filteredData.map(d => d.ask));
-  const latestTick = filteredData[filteredData.length - 1];
-  const firstTick = filteredData[0];
-  const priceChange = latestTick.mid - firstTick.mid;
-  const priceChangePercent = (priceChange / firstTick.mid) * 100;
+  // Calculate stats with safety guards
+  const bidHigh = filteredData.length > 0 ? Math.max(...filteredData.map(d => d.bid)) : 0;
+  const bidLow = filteredData.length > 0 ? Math.min(...filteredData.map(d => d.bid)) : 0;
+  const askHigh = filteredData.length > 0 ? Math.max(...filteredData.map(d => d.ask)) : 0;
+  const askLow = filteredData.length > 0 ? Math.min(...filteredData.map(d => d.ask)) : 0;
+  const latestTick = filteredData.length > 0 ? filteredData[filteredData.length - 1] : null;
+  const firstTick = filteredData.length > 0 ? filteredData[0] : null;
+  const priceChange = (latestTick?.mid ?? 0) - (firstTick?.mid ?? 0);
+  const priceChangePercent = firstTick?.mid ? (priceChange / firstTick.mid) * 100 : 0;
 
-  const minPrice = Math.min(bidLow, askLow) * 0.9995;
-  const maxPrice = Math.max(bidHigh, askHigh) * 1.0005;
+  const minPrice = (bidLow > 0 && askLow > 0) ? Math.min(bidLow, askLow) * 0.9995 : 4000;
+  const maxPrice = (bidHigh > 0 && askHigh > 0) ? Math.max(bidHigh, askHigh) * 1.0005 : 6000;
 
   // Format time based on view mode
   const formatTime = (timestamp: number) => {
@@ -96,7 +101,7 @@ export function IntradayChart() {
           <h3 className="text-base sm:text-lg font-bold text-white">Intraday Chart</h3>
           <span className={`flex items-center gap-1 text-xs sm:text-sm ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {priceChange >= 0 ? <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4" />}
-            {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%)
+            {priceChange >= 0 ? '+' : ''}{(priceChange ?? 0).toFixed(2)} ({(priceChangePercent ?? 0) >= 0 ? '+' : ''}{(priceChangePercent ?? 0).toFixed(2)}%)
           </span>
           {/* Provider Badge */}
           {dataProvider && (
@@ -148,19 +153,19 @@ export function IntradayChart() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-4 text-xs sm:text-sm">
         <div className="bg-gray-700/50 rounded-lg p-2">
           <span className="text-gray-400 text-xs">Bid High</span>
-          <p className="text-green-400 font-medium">${bidHigh.toFixed(2)}</p>
+          <p className="text-green-400 font-medium">${(bidHigh ?? 0).toFixed(2)}</p>
         </div>
         <div className="bg-gray-700/50 rounded-lg p-2">
           <span className="text-gray-400 text-xs">Bid Low</span>
-          <p className="text-red-400 font-medium">${bidLow.toFixed(2)}</p>
+          <p className="text-red-400 font-medium">${(bidLow ?? 0).toFixed(2)}</p>
         </div>
         <div className="bg-gray-700/50 rounded-lg p-2">
           <span className="text-gray-400 text-xs">Ask High</span>
-          <p className="text-green-400 font-medium">${askHigh.toFixed(2)}</p>
+          <p className="text-green-400 font-medium">${(askHigh ?? 0).toFixed(2)}</p>
         </div>
         <div className="bg-gray-700/50 rounded-lg p-2">
           <span className="text-gray-400 text-xs">Ask Low</span>
-          <p className="text-red-400 font-medium">${askLow.toFixed(2)}</p>
+          <p className="text-red-400 font-medium">${(askLow ?? 0).toFixed(2)}</p>
         </div>
       </div>
 
@@ -188,7 +193,7 @@ export function IntradayChart() {
             
             <YAxis
               domain={[minPrice, maxPrice]}
-              tickFormatter={(value) => `$${value.toFixed(0)}`}
+              tickFormatter={(value) => `$${(value ?? 0).toFixed(0)}`}
               stroke="#4b5563"
               tick={{ fill: '#9ca3af', fontSize: 10 }}
               width={55}
@@ -202,7 +207,7 @@ export function IntradayChart() {
               }}
               labelFormatter={(time) => format(time as number, 'HH:mm:ss')}
               formatter={(value, name) => [
-                `$${Number(value).toFixed(2)}`,
+                `$${Number(value ?? 0).toFixed(2)}`,
                 String(name).charAt(0).toUpperCase() + String(name).slice(1)
               ]}
             />

@@ -26,7 +26,8 @@ export function PriceChart() {
     '5y': '5 Years',
   };
 
-  if (priceHistory.length === 0 || isLoading) {
+  // Null/undefined guards - prevent crashes when data is missing
+  if (!priceHistory || priceHistory.length === 0 || isLoading) {
     return (
       <div className="bg-gray-800 rounded-xl p-6 h-80 flex items-center justify-center">
         <div className="text-center">
@@ -37,8 +38,27 @@ export function PriceChart() {
     );
   }
 
+  // Additional safety: ensure all price history items have valid data
+  const validPriceHistory = priceHistory.filter(candle => 
+    candle && 
+    typeof candle.timestamp === 'number' &&
+    typeof candle.close === 'number' &&
+    !isNaN(candle.close)
+  );
+
+  if (validPriceHistory.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded-xl p-6 h-80 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">No valid price data available</p>
+          <p className="text-gray-500 text-sm mt-2">Please wait for data to load...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Convert to chart data - using daily prices
-  const chartData = priceHistory.map((candle) => ({
+  const chartData = validPriceHistory.map((candle) => ({
     time: candle.timestamp,
     price: candle.close,
     high: candle.high,
@@ -70,8 +90,24 @@ export function PriceChart() {
     }
   }
 
-  const minPrice = Math.min(...chartData.map(d => d.low)) * 0.995;
-  const maxPrice = Math.max(...chartData.map(d => d.high)) * 1.005;
+  // Safety check for chart data calculations
+  const minPrice = chartData.length > 0 
+    ? Math.min(...chartData.map(d => d.low ?? d.price)) * 0.995 
+    : 4000;
+  const maxPrice = chartData.length > 0 
+    ? Math.max(...chartData.map(d => d.high ?? d.price)) * 1.005 
+    : 6000;
+  
+  // Guard against NaN values
+  if (isNaN(minPrice) || isNaN(maxPrice) || minPrice <= 0 || maxPrice <= 0) {
+    return (
+      <div className="bg-gray-800 rounded-xl p-6 h-80 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400">Processing price data...</p>
+        </div>
+      </div>
+    );
+  }
 
   const fibLines = fibLevels ? [
     { value: fibLevels.levels.level0, label: '0%', color: '#6366f1' },
@@ -123,7 +159,7 @@ export function PriceChart() {
             
             <YAxis
               domain={[minPrice, maxPrice]}
-              tickFormatter={(value) => `$${value.toFixed(0)}`}
+              tickFormatter={(value) => `$${(value ?? 0).toFixed(0)}`}
               stroke="#4b5563"
               tick={{ fill: '#9ca3af', fontSize: 11 }}
               width={60}
@@ -136,7 +172,7 @@ export function PriceChart() {
                 borderRadius: '8px',
               }}
               labelFormatter={(time) => format(time, 'EEEE, MMMM d, yyyy')}
-              formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Daily Close']}
+              formatter={(value) => [`$${Number(value ?? 0).toFixed(2)}`, 'Daily Close']}
             />
 
             {/* Fibonacci reference lines */}
@@ -148,7 +184,7 @@ export function PriceChart() {
                 strokeDasharray="5 5"
                 strokeOpacity={0.6}
                 label={{
-                  value: `${fib.label} ($${fib.value.toFixed(0)})`,
+                  value: `${fib.label} ($${(fib.value ?? 0).toFixed(0)})`,
                   fill: fib.color,
                   fontSize: 10,
                   position: 'right',
@@ -157,7 +193,7 @@ export function PriceChart() {
             ))}
 
             {/* Current price reference line */}
-            {currentPrice && (
+            {currentPrice && typeof currentPrice.price === 'number' && (
               <ReferenceLine
                 y={currentPrice.price}
                 stroke="#22c55e"

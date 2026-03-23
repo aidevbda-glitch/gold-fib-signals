@@ -67,7 +67,7 @@ export function FibonacciLevels() {
               
               <div className="flex items-center gap-3">
                 <span className={`font-medium ${isAbove ? 'text-green-400' : 'text-red-400'}`}>
-                  ${level.value.toFixed(2)}
+                  ${level.value?.toFixed(2) ?? 'N/A'}
                 </span>
                 {isNearest && (
                   <span className="px-2 py-0.5 bg-yellow-500 text-black text-xs font-bold rounded">
@@ -83,9 +83,9 @@ export function FibonacciLevels() {
       {nearest && currentPrice && (
         <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
           <p className="text-sm text-gray-300">
-            Current price <span className="text-white font-bold">${currentPrice.price.toFixed(2)}</span> is{' '}
-            <span className="text-yellow-400 font-medium">${nearest.distance.toFixed(2)}</span>{' '}
-            ({nearest.percentDistance.toFixed(2)}%) away from the {nearest.level} level.
+            Current price <span className="text-white font-bold">${currentPrice.price?.toFixed(2) ?? 'N/A'}</span> is{' '}
+            <span className="text-yellow-400 font-medium">${nearest.distance?.toFixed(2) ?? 'N/A'}</span>{' '}
+            ({nearest.percentDistance?.toFixed(2) ?? 'N/A'}%) away from the {nearest.level} level.
           </p>
         </div>
       )}

@@ -25,6 +25,7 @@ type Store = AppState & StoreActions;
 
 // Module-level interval tracking to prevent double-start
 let activeIntervals: { price?: ReturnType<typeof setInterval>; intraday?: ReturnType<typeof setInterval> } = {};
+let isStartingUpdates = false; // Prevent concurrent start calls
 
 export const useStore = create<Store>((set, get) => ({
   // Initial state
@@ -218,39 +219,61 @@ export const useStore = create<Store>((set, get) => ({
   startRealTimeUpdates: () => {
     const state = get();
 
-    // Prevent double-start if intervals are already active
-    if (state.intervalsActive || activeIntervals.price || activeIntervals.intraday) {
-      console.log('⚠️ Real-time updates already running, skipping start');
-      return () => {}; // Return no-op cleanup
+    // Prevent double-start if intervals are already active OR if we're in the middle of starting
+    // This handles both React StrictMode double-invocation and rapid component mount/unmount cycles
+    if (isStartingUpdates || state.intervalsActive || activeIntervals.price || activeIntervals.intraday) {
+      console.log('⚠️ Real-time updates already running or starting, skipping start');
+      return () => {}; // Return no-op cleanup - the original cleanup is still valid
     }
 
-    // Mark intervals as active
-    set({ intervalsActive: true });
+    // Set the guard flag immediately to prevent concurrent calls
+    isStartingUpdates = true;
 
-    // Check backend availability
-    GoldPriceService.checkBackend().then((available) => {
-      if (available) {
-        console.log('✅ Backend API connected');
-        get().loadSignalsFromBackend();
-      } else {
-        console.log('⚠️ Backend unavailable, using mock data');
+    try {
+      // Mark intervals as active in state
+      set({ intervalsActive: true });
+
+      // Check backend availability
+      GoldPriceService.checkBackend().then((available) => {
+        if (available) {
+          console.log('✅ Backend API connected');
+          get().loadSignalsFromBackend();
+        } else {
+          console.log('⚠️ Backend unavailable, using mock data');
+        }
+      });
+
+      // Fetch initial data (fire and forget - errors handled in individual fetch functions)
+      get().fetchHistoricalData().catch(console.error);
+      get().fetchCurrentPrice().catch(console.error);
+      get().fetchIntradayData().catch(console.error);
+
+      // Only set up intervals if we successfully passed all guards
+      // This prevents orphaned intervals if an error occurs above
+      if (!activeIntervals.price) {
+        activeIntervals.price = setInterval(() => {
+          get().fetchCurrentPrice().catch(console.error);
+        }, 5000);
       }
-    });
 
-    // Fetch initial data
-    get().fetchHistoricalData();
-    get().fetchCurrentPrice();
-    get().fetchIntradayData();
+      if (!activeIntervals.intraday) {
+        activeIntervals.intraday = setInterval(() => {
+          get().fetchIntradayData().catch(console.error);
+        }, 30000);
+      }
 
-    // Update price every 5 seconds
-    activeIntervals.price = setInterval(() => {
-      get().fetchCurrentPrice();
-    }, 5000);
-
-    // Update intraday data every 30 seconds
-    activeIntervals.intraday = setInterval(() => {
-      get().fetchIntradayData();
-    }, 30000);
+      console.log('✅ Real-time updates started');
+    } catch (error) {
+      console.error('❌ Failed to start real-time updates:', error);
+      // Reset state if startup failed
+      set({ intervalsActive: false });
+      isStartingUpdates = false;
+      throw error;
+    } finally {
+      // Always reset the guard flag after setup completes (success or error)
+      // This allows future restart attempts
+      isStartingUpdates = false;
+    }
 
     // Return cleanup function
     return () => {

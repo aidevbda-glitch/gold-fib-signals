@@ -125,8 +125,17 @@ function validateProviderId(providerId) {
   return providerId;
 }
 
-// Health check
+// Health check - support both /health and /api/health
 app.get('/health', (req, res) => {
+  try {
+    res.json({ status: 'ok', timestamp: Date.now() });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({ error: 'Health check failed' });
+  }
+});
+
+app.get('/api/health', (req, res) => {
   try {
     res.json({ status: 'ok', timestamp: Date.now() });
   } catch (error) {

@@ -1,6 +1,66 @@
 import { useEffect } from 'react';
-import { useState } from 'react';
+import { useState, Component, type ReactNode, type ErrorInfo } from 'react';
 import { useStore } from './hooks/useStore';
+
+// Error Boundary to prevent blank screens on component errors
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+      return (
+        <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl p-8 max-w-lg w-full text-center">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h1 className="text-2xl font-bold text-white mb-4">Something went wrong</h1>
+            <p className="text-gray-400 mb-6">
+              The application encountered an unexpected error. Try refreshing the page.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-yellow-500 text-black font-medium rounded-lg hover:bg-yellow-400 transition-colors"
+            >
+              Reload Page
+            </button>
+            {this.state.error && (
+              <div className="mt-6 p-4 bg-gray-900 rounded-lg text-left overflow-auto">
+                <p className="text-xs text-gray-500 font-mono">
+                  {this.state.error.toString()}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 import { PriceDisplay } from './components/PriceDisplay';
 import { FibonacciLevels } from './components/FibonacciLevels';
 import { SignalsList } from './components/SignalsList';
@@ -325,4 +385,13 @@ function App() {
   );
 }
 
-export default App;
+// Wrap App with ErrorBoundary for crash protection
+function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
+export default AppWithErrorBoundary;

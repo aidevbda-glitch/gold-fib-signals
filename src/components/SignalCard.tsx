@@ -47,7 +47,7 @@ export function SignalCard({ signal }: SignalCardProps) {
               </span>
             </div>
             <p className="text-gray-400 text-sm">
-              at ${signal.price.toFixed(2)} • {format(signal.timestamp, 'HH:mm:ss')}
+              at ${signal.price?.toFixed(2) ?? 'N/A'} • {format(signal.timestamp, 'HH:mm:ss')}
             </p>
           </div>
         </div>
@@ -83,7 +83,7 @@ export function SignalCard({ signal }: SignalCardProps) {
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-gray-800/30 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Price</p>
-              <p className="text-white font-medium">${signal.technicalDetails.currentPrice.toFixed(2)}</p>
+              <p className="text-white font-medium">${signal.technicalDetails?.currentPrice?.toFixed(2) ?? 'N/A'}</p>
             </div>
             <div className="bg-gray-800/30 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Nearest Fib</p>
@@ -91,7 +91,7 @@ export function SignalCard({ signal }: SignalCardProps) {
             </div>
             <div className="bg-gray-800/30 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Distance</p>
-              <p className="text-white font-medium">${signal.technicalDetails.distanceToLevel.toFixed(2)}</p>
+              <p className="text-white font-medium">${signal.technicalDetails?.distanceToLevel?.toFixed(2) ?? 'N/A'}</p>
             </div>
             <div className="bg-gray-800/30 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Trend</p>

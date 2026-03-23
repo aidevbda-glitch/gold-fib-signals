@@ -79,7 +79,7 @@ export function GroupedSignalCard({ group }: GroupedSignalCardProps) {
               </span>
             </div>
             <p className="text-gray-400 text-sm">
-              ${group.priceRange.min.toFixed(2)} - ${group.priceRange.max.toFixed(2)} • {format(group.timeRange.start, 'HH:mm')} - {format(group.timeRange.end, 'HH:mm')}
+              ${group.priceRange?.min?.toFixed(2) ?? 'N/A'} - ${group.priceRange?.max?.toFixed(2) ?? 'N/A'} • {format(group.timeRange?.start ?? Date.now(), 'HH:mm')} - {format(group.timeRange?.end ?? Date.now(), 'HH:mm')}
             </p>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function GroupedSignalCard({ group }: GroupedSignalCardProps) {
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
             <p className="text-sm text-gray-400">Price Spread</p>
-            <p className="text-white font-medium">${priceSpread.toFixed(2)}</p>
+            <p className="text-white font-medium">${priceSpread?.toFixed(2) ?? 'N/A'}</p>
           </div>
           {expanded ? (
             <ChevronUp className="w-5 h-5 text-gray-400" />
@@ -108,11 +108,11 @@ export function GroupedSignalCard({ group }: GroupedSignalCardProps) {
             </div>
             <div className="bg-gray-800/50 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Avg Price</p>
-              <p className="text-white font-medium">${avgPrice.toFixed(2)}</p>
+              <p className="text-white font-medium">${avgPrice?.toFixed(2) ?? 'N/A'}</p>
             </div>
             <div className="bg-gray-800/50 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Price Range</p>
-              <p className="text-white font-medium">${priceSpread.toFixed(2)}</p>
+              <p className="text-white font-medium">${priceSpread?.toFixed(2) ?? 'N/A'}</p>
             </div>
             <div className="bg-gray-800/50 p-3 rounded-lg">
               <p className="text-xs text-gray-500 uppercase">Latest Fib</p>

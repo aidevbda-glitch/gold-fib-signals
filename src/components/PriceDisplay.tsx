@@ -27,7 +27,8 @@ export function PriceDisplay() {
     }
   };
 
-  if (!currentPrice) {
+  // Comprehensive null check for currentPrice and its properties
+  if (!currentPrice || typeof currentPrice.price !== 'number') {
     return (
       <div className="bg-gray-800 rounded-xl p-6 animate-pulse">
         <div className="h-8 bg-gray-700 rounded w-32 mb-2"></div>
@@ -36,12 +37,12 @@ export function PriceDisplay() {
     );
   }
 
-  const isPositive = currentPrice.changePercent24h > 0;
-  const isNegative = currentPrice.changePercent24h < 0;
+  const isPositive = (currentPrice.changePercent24h ?? 0) > 0;
+  const isNegative = (currentPrice.changePercent24h ?? 0) < 0;
 
   const TrendIcon = isPositive ? TrendingUp : isNegative ? TrendingDown : Minus;
   const trendColor = isPositive ? 'text-green-400' : isNegative ? 'text-red-400' : 'text-gray-400';
-  const spread = currentPrice.ask - currentPrice.bid;
+  const spread = (currentPrice.ask ?? 0) - (currentPrice.bid ?? 0);
 
   return (
     <div className="bg-gradient-to-br from-yellow-900/30 to-yellow-700/20 border border-yellow-600/30 rounded-xl px-3.5 py-4 sm:p-6">
@@ -71,7 +72,7 @@ export function PriceDisplay() {
         <div className="flex flex-col">
           <div className={`flex items-center gap-1 ${trendColor} text-sm sm:text-lg`}>
             <TrendIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span>{isPositive ? '+' : ''}{currentPrice.changePercent24h.toFixed(2)}%</span>
+            <span>{isPositive ? '+' : ''}{(currentPrice.changePercent24h ?? 0).toFixed(2)}%</span>
           </div>
           <span className="text-xs text-gray-500">24h Change</span>
         </div>
@@ -80,11 +81,11 @@ export function PriceDisplay() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-4 text-xs sm:text-sm">
         <div>
           <span className="text-gray-400">Bid (Buy at)</span>
-          <p className="text-green-400 font-medium">${currentPrice.bid.toFixed(2)}</p>
+          <p className="text-green-400 font-medium">${(currentPrice.bid ?? 0).toFixed(2)}</p>
         </div>
         <div>
           <span className="text-gray-400">Ask (Sell at)</span>
-          <p className="text-red-400 font-medium">${currentPrice.ask.toFixed(2)}</p>
+          <p className="text-red-400 font-medium">${(currentPrice.ask ?? 0).toFixed(2)}</p>
         </div>
         <div>
           <span className="text-gray-400">Spread</span>
@@ -92,11 +93,11 @@ export function PriceDisplay() {
         </div>
         <div>
           <span className="text-gray-400">24h High</span>
-          <p className="text-green-400 font-medium">${currentPrice.high24h.toFixed(2)}</p>
+          <p className="text-green-400 font-medium">${(currentPrice.high24h ?? 0).toFixed(2)}</p>
         </div>
         <div>
           <span className="text-gray-400">24h Low</span>
-          <p className="text-red-400 font-medium">${currentPrice.low24h.toFixed(2)}</p>
+          <p className="text-red-400 font-medium">${(currentPrice.low24h ?? 0).toFixed(2)}</p>
         </div>
       </div>
 

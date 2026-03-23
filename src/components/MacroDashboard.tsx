@@ -109,7 +109,7 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
           <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
             {formatRegimeName(regime)}
           </span>
-          <span className="text-xs text-gray-500">({confidence}% confidence)</span>
+          <span className="text-xs text-gray-500">({confidence ?? 0}% confidence)</span>
         </div>
       </div>
 
@@ -134,19 +134,19 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-400">Next Meeting:</span>
-            <span className="font-medium">{new Date(rateExpectations.nextMeeting).toLocaleDateString()}</span>
+            <span className="font-medium">{new Date(rateExpectations?.nextMeeting).toLocaleDateString()}</span>
           </div>
           
           {/* Probability Bars */}
           <div className="space-y-1">
             <div className="flex justify-between text-xs">
               <span className="text-gray-500">Hike Probability</span>
-              <span className="font-medium">{rateExpectations.hikeProbability}%</span>
+              <span className="font-medium">{rateExpectations?.hikeProbability ?? 0}%</span>
             </div>
             <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-red-500 transition-all duration-500"
-                style={{ width: `${rateExpectations.hikeProbability}%` }}
+                style={{ width: `${rateExpectations?.hikeProbability ?? 0}%` }}
               />
             </div>
           </div>
@@ -154,12 +154,12 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
           <div className="space-y-1">
             <div className="flex justify-between text-xs">
               <span className="text-gray-500">Cut Probability</span>
-              <span className="font-medium">{rateExpectations.cutProbability}%</span>
+              <span className="font-medium">{rateExpectations?.cutProbability ?? 0}%</span>
             </div>
             <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-green-500 transition-all duration-500"
-                style={{ width: `${rateExpectations.cutProbability}%` }}
+                style={{ width: `${rateExpectations?.cutProbability ?? 0}%` }}
               />
             </div>
           </div>
@@ -167,12 +167,12 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
           <div className="space-y-1">
             <div className="flex justify-between text-xs">
               <span className="text-gray-500">Hold Probability</span>
-              <span className="font-medium">{rateExpectations.holdProbability}%</span>
+              <span className="font-medium">{rateExpectations?.holdProbability ?? 0}%</span>
             </div>
             <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gray-400 transition-all duration-500"
-                style={{ width: `${rateExpectations.holdProbability}%` }}
+                style={{ width: `${rateExpectations?.holdProbability ?? 0}%` }}
               />
             </div>
           </div>
@@ -187,32 +187,32 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span className="text-gray-600 dark:text-gray-400">Current:</span>
-            <span className="ml-2 font-medium">{dollarContext.dxyCurrent.toFixed(2)}</span>
+            <span className="ml-2 font-medium">{(dollarContext?.dxyCurrent ?? 0).toFixed(2)}</span>
           </div>
           <div>
             <span className="text-gray-600 dark:text-gray-400">24h:</span>
-            <span className={`ml-2 font-medium ${dollarContext.dxyChange24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {dollarContext.dxyChange24h >= 0 ? '+' : ''}{dollarContext.dxyChange24h.toFixed(2)}%
+            <span className={`ml-2 font-medium ${(dollarContext?.dxyChange24h ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {(dollarContext?.dxyChange24h ?? 0) >= 0 ? '+' : ''}{(dollarContext?.dxyChange24h ?? 0).toFixed(2)}%
             </span>
           </div>
           <div>
             <span className="text-gray-600 dark:text-gray-400">7d:</span>
-            <span className={`ml-2 font-medium ${dollarContext.dxyChange7d >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {dollarContext.dxyChange7d >= 0 ? '+' : ''}{dollarContext.dxyChange7d.toFixed(2)}%
+            <span className={`ml-2 font-medium ${(dollarContext?.dxyChange7d ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {(dollarContext?.dxyChange7d ?? 0) >= 0 ? '+' : ''}{(dollarContext?.dxyChange7d ?? 0).toFixed(2)}%
             </span>
           </div>
           <div>
             <span className="text-gray-600 dark:text-gray-400">Trend:</span>
             <span className={`ml-2 font-medium capitalize ${
-              dollarContext.dxyTrend === 'strengthening' ? 'text-green-500' :
-              dollarContext.dxyTrend === 'weakening' ? 'text-red-500' : 'text-gray-500'
+              dollarContext?.dxyTrend === 'strengthening' ? 'text-green-500' :
+              dollarContext?.dxyTrend === 'weakening' ? 'text-red-500' : 'text-gray-500'
             }`}>
-              {dollarContext.dxyTrend}
+              {dollarContext?.dxyTrend ?? 'neutral'}
             </span>
           </div>
         </div>
         <div className="mt-2 text-xs text-gray-500">
-          Gold/DXY Correlation (20d): {dollarContext.goldDxyCorrelation20d.toFixed(2)}
+          Gold/DXY Correlation (20d): {(dollarContext?.goldDxyCorrelation20d ?? 0).toFixed(2)}
         </div>
       </div>
 
@@ -224,22 +224,22 @@ export const MacroDashboard: React.FC<MacroDashboardProps> = ({ className = '' }
         <div className="grid grid-cols-3 gap-2 text-sm">
           <div className="text-center">
             <div className="text-xs text-gray-500">2Y</div>
-            <div className="font-medium">{treasuryYields.yield2Y.toFixed(2)}%</div>
+            <div className="font-medium">{(treasuryYields?.yield2Y ?? 0).toFixed(2)}%</div>
           </div>
           <div className="text-center">
             <div className="text-xs text-gray-500">10Y</div>
-            <div className="font-medium">{treasuryYields.yield10Y.toFixed(2)}%</div>
+            <div className="font-medium">{(treasuryYields?.yield10Y ?? 0).toFixed(2)}%</div>
           </div>
           <div className="text-center">
             <div className="text-xs text-gray-500">30Y</div>
-            <div className="font-medium">{treasuryYields.yield30Y.toFixed(2)}%</div>
+            <div className="font-medium">{(treasuryYields?.yield30Y ?? 0).toFixed(2)}%</div>
           </div>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <span className="text-xs text-gray-500">Spread (10Y-2Y):</span>
-          <span className={`text-sm font-medium ${treasuryYields.isInverted ? 'text-red-500' : 'text-green-500'}`}>
-            {treasuryYields.yieldSpread10Y2Y.toFixed(2)}%
-            {treasuryYields.isInverted && ' ⚠️ Inverted'}
+          <span className={`text-sm font-medium ${treasuryYields?.isInverted ? 'text-red-500' : 'text-green-500'}`}>
+            {(treasuryYields?.yieldSpread10Y2Y ?? 0).toFixed(2)}%
+            {treasuryYields?.isInverted && ' ⚠️ Inverted'}
           </span>
         </div>
       </div>
