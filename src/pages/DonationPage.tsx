@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Heart, Trophy, Users, Target, Coffee, DollarSign, Sparkles } from 'lucide-react';
+import { ArrowLeft, Heart, Trophy, Users, Target, Coffee, DollarSign, Sparkles, Bell, Mail, Check } from 'lucide-react';
+import { NotificationRequestModal } from '../components/NotificationRequestModal';
 
 interface DonationPageProps {
   onBack: () => void;
+}
+
+interface NotificationSettings {
+  admin_email: string;
+  require_approval: number;
+  require_donation: number;
+  min_donation_amount: number;
+  email_subject_prefix: string;
 }
 
 interface DonationStats {
@@ -46,8 +55,16 @@ export function DonationPage({ onBack }: DonationPageProps) {
   const [customAmount, setCustomAmount] = useState<string>('');
   const [_isLoading, setIsLoading] = useState(true);
 
+  // Notification states
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [hasDonated, setHasDonated] = useState(false);
+  const [skipNotification, setSkipNotification] = useState(false);
+  const [donationComplete, setDonationComplete] = useState(false);
+
   useEffect(() => {
     fetchDonationData();
+    fetchNotificationSettings();
   }, []);
 
   const fetchDonationData = async () => {
@@ -77,15 +94,40 @@ export function DonationPage({ onBack }: DonationPageProps) {
     }
   };
 
+  const fetchNotificationSettings = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/admin/notification-settings`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotificationSettings(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notification settings:', error);
+    }
+  };
+
   const handleDonate = (amount: number) => {
     // This would typically redirect to Stripe/PayPal checkout
-    // For now, we'll show an alert
+    // For now, we'll show an alert and simulate success
     const donationAmount = customAmount ? parseFloat(customAmount) : amount;
+    
+    // Simulate successful donation (in real app, this would happen after Stripe redirect/callback)
     alert(`Thank you! Redirecting to payment for $${donationAmount}...\n\n(Payment integration coming soon)`);
+    
+    // Simulate donation completion for demo
+    setHasDonated(true);
+    setDonationComplete(true);
     
     // TODO: Integrate with Stripe or PayPal
     // window.location.href = `https://stripe.com/checkout?amount=${donationAmount * 100}`;
   };
+
+  const handleNotificationRequest = () => {
+    setShowNotificationModal(true);
+  };
+
+  const requiresDonation = notificationSettings?.require_donation === 1;
+  const canRequestNotifications = !requiresDonation || hasDonated || donationComplete;
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -287,7 +329,107 @@ export function DonationPage({ onBack }: DonationPageProps) {
             </li>
           </ul>
         </div>
+
+        {/* Notification Signup Section */}
+        <div className="mt-6 bg-gradient-to-br from-yellow-900/30 to-amber-900/20 border border-yellow-700/30 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
+              <Bell className="w-5 h-5 text-yellow-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Get Signal Alerts</h3>
+              <p className="text-sm text-gray-400">Email notifications for new BUY/SELL signals</p>
+            </div>
+          </div>
+
+          {requiresDonation && !canRequestNotifications && !skipNotification && (
+            <div className="space-y-4">
+              <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <Mail className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-yellow-200 font-medium">Donation Required</p>
+                    <p className="text-yellow-100/70 text-sm mt-1">
+                      To receive email notifications, a donation is required to help cover server costs 
+                      and prevent abuse. Any amount unlocks lifetime email alerts!
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <label className="flex items-center gap-2 text-gray-400 cursor-pointer hover:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={skipNotification}
+                  onChange={(e) => setSkipNotification(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 text-yellow-500 focus:ring-yellow-500"
+                />
+                <span className="text-sm">Skip notification signup for now</span>
+              </label>
+            </div>
+          )}
+
+          {canRequestNotifications && !skipNotification && (
+            <div className="space-y-4">
+              {donationComplete && (
+                <div className="bg-green-900/30 border border-green-700/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-green-400">
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">Thank you for your donation!</span>
+                  </div>
+                  <p className="text-green-100/70 text-sm mt-1">
+                    You now qualify for email notifications. Sign up below to receive alerts.
+                  </p>
+                </div>
+              )}
+
+              {!requiresDonation && (
+                <p className="text-gray-400 text-sm">
+                  Sign up to receive instant email notifications whenever new trading signals are generated.
+                </p>
+              )}
+
+              <button
+                onClick={handleNotificationRequest}
+                className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Mail className="w-5 h-5" />
+                Request Email Notifications
+              </button>
+
+              <label className="flex items-center gap-2 text-gray-400 cursor-pointer hover:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={skipNotification}
+                  onChange={(e) => setSkipNotification(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 text-yellow-500 focus:ring-yellow-500"
+                />
+                <span className="text-sm">Skip notification signup</span>
+              </label>
+            </div>
+          )}
+
+          {skipNotification && (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm">
+                You can request notifications anytime from the homepage banner.
+              </p>
+              <button
+                onClick={() => setSkipNotification(false)}
+                className="mt-2 text-yellow-400 hover:text-yellow-300 text-sm font-medium"
+              >
+                Change your mind?
+              </button>
+            </div>
+          )}
+        </div>
       </main>
+
+      {/* Notification Request Modal */}
+      <NotificationRequestModal
+        isOpen={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+      />
     </div>
   );
 }

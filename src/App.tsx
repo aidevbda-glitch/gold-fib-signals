@@ -68,6 +68,8 @@ import { PriceChart } from './components/PriceChart';
 import { IntradayChart } from './components/IntradayChart';
 import { LastSignalBanner } from './components/LastSignalBanner';
 import { MacroDashboard } from './components/MacroDashboard';
+import { NotificationBanner } from './components/NotificationBanner';
+import { NotificationRequestModal } from './components/NotificationRequestModal';
 import { GoldProductsPage } from './pages/GoldProductsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { BuySignalsPage } from './pages/BuySignalsPage';
@@ -88,11 +90,16 @@ function App() {
   const { startRealTimeUpdates, error, selectedRange, setSelectedRange } = useStore();
   const [currentPage, setCurrentPage] = useState<Page>('signals');
   const [chartView, setChartView] = useState<ChartView>('daily');
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
 
   useEffect(() => {
     const cleanup = startRealTimeUpdates();
     return cleanup;
   }, [startRealTimeUpdates]);
+
+  const handleRequestNotifications = () => {
+    setShowNotificationModal(true);
+  };
 
   if (currentPage === 'products') {
     return <GoldProductsPage onBack={() => setCurrentPage('signals')} />;
@@ -381,6 +388,15 @@ function App() {
           <p>Gold Fib Signals • Built with React + Vite</p>
         </div>
       </footer>
+
+      {/* Notification Banner */}
+      <NotificationBanner onRequestNotifications={handleRequestNotifications} />
+
+      {/* Notification Request Modal */}
+      <NotificationRequestModal
+        isOpen={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+      />
     </div>
   );
 }

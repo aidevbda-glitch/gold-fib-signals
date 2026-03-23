@@ -15,9 +15,13 @@ import {
   Copy,
   LogOut,
   Server,
-  ChevronRight
+  ChevronRight,
+  Bell,
+  Mail,
+  TestTube
 } from 'lucide-react';
 import { EmailSettingsPanel } from '../components/EmailSettingsPanel';
+import { PendingRequestsPanel } from '../components/PendingRequestsPanel';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -52,6 +56,17 @@ interface MfaSetup {
   secret: string;
   qrCode: string;
   backupCodes: string[];
+}
+
+interface NotificationSettings {
+  admin_email: string;
+  require_approval: number;
+  require_donation: number;
+  min_donation_amount: number;
+  email_subject_prefix: string;
+  show_banner?: number;
+  banner_text?: string;
+  auto_approve?: number;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -90,6 +105,12 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
   const [goalTarget, setGoalTarget] = useState('');
   const [goalDescription, setGoalDescription] = useState('');
 
+  // Notification settings state
+  const [notificationForm, setNotificationForm] = useState<Partial<NotificationSettings>>({});
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
   useEffect(() => {
     checkAuthStatus();
   }, [sessionId]);
@@ -114,9 +135,12 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
 
   const loadSettings = async () => {
     try {
-      const [adRes, goalRes] = await Promise.all([
+      const [adRes, goalRes, notifRes] = await Promise.all([
         fetch(`${API_BASE}/ads/settings`),
-        fetch(`${API_BASE}/donations/goal`)
+        fetch(`${API_BASE}/donations/goal`),
+        fetch(`${API_BASE}/admin/notification-settings`, {
+          headers: sessionId ? { 'X-Admin-Session': sessionId } : {}
+        })
       ]);
       
       if (adRes.ok) {
@@ -128,6 +152,10 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
         setDonationGoal(data.data);
         setGoalTarget(data.data.target.toString());
         setGoalDescription(data.data.description);
+      }
+      if (notifRes.ok) {
+        const data = await notifRes.json();
+        setNotificationForm(data.data);
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -359,6 +387,64 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
       navigator.clipboard.writeText(mfaSetup.backupCodes.join('\n'));
       setCopiedBackupCodes(true);
       setTimeout(() => setCopiedBackupCodes(false), 2000);
+    }
+  };
+
+  const handleNotificationSettingsUpdate = async () => {
+    try {
+      setSavingNotifications(true);
+      const response = await fetch(`${API_BASE}/admin/notification-settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Session': sessionId!
+        },
+        body: JSON.stringify({
+          adminEmail: notificationForm.admin_email,
+          requireDonation: notificationForm.require_donation,
+          showBanner: notificationForm.show_banner,
+          bannerText: notificationForm.banner_text,
+          autoApprove: notificationForm.auto_approve
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setNotificationForm(data.data);
+        alert('Notification settings updated!');
+      } else {
+        alert('Failed to update notification settings');
+      }
+    } catch (error) {
+      console.error('Failed to update notification settings:', error);
+      alert('Failed to update notification settings');
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    try {
+      setTestingSmtp(true);
+      const response = await fetch(`${API_BASE}/email/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Session': sessionId!
+        }
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert('SMTP test successful! Check your admin email.');
+      } else {
+        alert(`SMTP test failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Failed to test SMTP:', error);
+      alert('Failed to test SMTP configuration');
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
@@ -882,6 +968,137 @@ export function AdminPage({ onBack, onNavigateToProviders }: AdminPageProps) {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Notification System Settings */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-yellow-400" />
+            Notification System Settings
+          </h2>
+
+          {/* Admin Email */}
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-1">Admin Email (for approval requests)</label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={notificationForm.admin_email || ''}
+                onChange={(e) => setNotificationForm({ ...notificationForm, admin_email: e.target.value })}
+                placeholder="admin@example.com"
+                className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
+              />
+              <button
+                onClick={handleTestSmtp}
+                disabled={testingSmtp}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                <TestTube className="w-4 h-4" />
+                {testingSmtp ? 'Testing...' : 'Test SMTP'}
+              </button>
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div className="space-y-3 mb-4">
+            <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+              <div>
+                <p className="font-medium">Require Donation for Notifications</p>
+                <p className="text-sm text-gray-400">Users must donate to request email alerts</p>
+              </div>
+              <button
+                onClick={() => setNotificationForm({ 
+                  ...notificationForm, 
+                  require_donation: notificationForm.require_donation ? 0 : 1 
+                })}
+                className={`w-12 h-6 rounded-full transition-colors relative ${
+                  notificationForm.require_donation ? 'bg-green-500' : 'bg-gray-600'
+                }`}
+              >
+                <span className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition-transform ${
+                  notificationForm.require_donation ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+              <div>
+                <p className="font-medium">Show Homepage Banner</p>
+                <p className="text-sm text-gray-400">Display notification signup banner on homepage</p>
+              </div>
+              <button
+                onClick={() => setNotificationForm({ 
+                  ...notificationForm, 
+                  show_banner: notificationForm.show_banner ? 0 : 1 
+                })}
+                className={`w-12 h-6 rounded-full transition-colors relative ${
+                  notificationForm.show_banner ? 'bg-green-500' : 'bg-gray-600'
+                }`}
+              >
+                <span className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition-transform ${
+                  notificationForm.show_banner ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+              <div>
+                <p className="font-medium">Auto-approve with Donation</p>
+                <p className="text-sm text-gray-400">Automatically approve requests after Stripe donation</p>
+              </div>
+              <button
+                onClick={() => setNotificationForm({ 
+                  ...notificationForm, 
+                  auto_approve: notificationForm.auto_approve ? 0 : 1 
+                })}
+                className={`w-12 h-6 rounded-full transition-colors relative ${
+                  notificationForm.auto_approve ? 'bg-green-500' : 'bg-gray-600'
+                }`}
+              >
+                <span className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition-transform ${
+                  notificationForm.auto_approve ? 'translate-x-6' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Banner Text */}
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-1">Banner Text Content</label>
+            <textarea
+              value={notificationForm.banner_text || ''}
+              onChange={(e) => setNotificationForm({ ...notificationForm, banner_text: e.target.value })}
+              placeholder="Get instant email alerts for new trading signals..."
+              rows={3}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-yellow-500"
+            />
+          </div>
+
+          <button
+            onClick={handleNotificationSettingsUpdate}
+            disabled={savingNotifications}
+            className="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-gray-600 text-black font-medium rounded-lg transition-colors"
+          >
+            {savingNotifications ? 'Saving...' : 'Save Notification Settings'}
+          </button>
+        </section>
+
+        {/* Pending Subscription Requests */}
+        <section className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Mail className="w-5 h-5 text-blue-400" />
+            Pending Subscription Requests
+            {pendingCount > 0 && (
+              <span className="px-2 py-0.5 bg-red-500 text-white text-sm rounded-full">
+                {pendingCount}
+              </span>
+            )}
+          </h2>
+          
+          <PendingRequestsPanel 
+            sessionId={sessionId!} 
+            onCountChange={setPendingCount}
+          />
         </section>
 
         {/* Email Notifications */}
